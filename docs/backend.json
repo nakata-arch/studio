@@ -1,0 +1,353 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the MomentumFlow application, storing their profile information and app-specific settings.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name, typically from their Google account."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address, typically from their Google account.",
+          "format": "email"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL to the user's profile photo, typically from their Google account.",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the user account was first created in the application.",
+          "format": "date-time"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Timestamp of the user's most recent login to the application.",
+          "format": "date-time"
+        },
+        "isConsistentUser": {
+          "type": "boolean",
+          "description": "A flag indicating if the user has met the criteria for consistent use (e.g., launched the app for 7 consecutive days)."
+        },
+        "consistencyStartDate": {
+          "type": "string",
+          "description": "The date from which the 7-day consistency period started counting for the user.",
+          "format": "date"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "Event": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Event",
+      "type": "object",
+      "description": "Represents a scheduled event, imported from Google Calendar, including app-specific classifications and reporting statuses.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Event entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who owns this event. (Relationship: User 1:N Event)"
+        },
+        "googleEventId": {
+          "type": "string",
+          "description": "The unique identifier of the event as provided by Google Calendar."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title or name of the event."
+        },
+        "startAt": {
+          "type": "string",
+          "description": "The start date and time of the event.",
+          "format": "date-time"
+        },
+        "endAt": {
+          "type": "string",
+          "description": "The end date and time of the event.",
+          "format": "date-time"
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description or notes for the event."
+        },
+        "calendarId": {
+          "type": "string",
+          "description": "The unique identifier of the Google Calendar this event belongs to."
+        },
+        "calendarName": {
+          "type": "string",
+          "description": "The display name of the Google Calendar this event belongs to."
+        },
+        "googleColorId": {
+          "type": "string",
+          "description": "The color ID associated with the event in Google Calendar. This is primarily used for shared calendars."
+        },
+        "quadrantCategory": {
+          "type": "string",
+          "description": "The classification of the event into one of the four quadrants: urgent_important, not_urgent_important, urgent_not_important, not_urgent_not_important."
+        },
+        "reportStatus": {
+          "type": "string",
+          "description": "The status of a past event: 'done' (completed), 'failed' (not completed), or 'cancelled'."
+        },
+        "reportMemo": {
+          "type": "string",
+          "description": "A personal memo or reflection written by the user about a past event."
+        },
+        "isSharedCalendar": {
+          "type": "boolean",
+          "description": "A flag indicating whether this event belongs to a shared Google Calendar."
+        },
+        "syncStatus": {
+          "type": "string",
+          "description": "The current synchronization status of the event with Google Calendar: 'synced', 'pending', or 'failed'."
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "description": "Timestamp of the last successful synchronization of this event with Google Calendar.",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the event record was first created in the application.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of the last modification to the event record in the application.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "googleEventId",
+        "title",
+        "startAt",
+        "endAt",
+        "calendarId"
+      ]
+    },
+    "Quote": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Quote",
+      "type": "object",
+      "description": "Stores motivational quotes and associated prompts to be displayed within the application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Quote entity."
+        },
+        "text": {
+          "type": "string",
+          "description": "The main text content of the motivational quote."
+        },
+        "author": {
+          "type": "string",
+          "description": "The author of the quote."
+        },
+        "displayTiming": {
+          "type": "array",
+          "description": "An array of strings indicating specific times or events when the quote should be displayed (e.g., 'morning', 'evening', 'app_launch').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subMessage": {
+          "type": "string",
+          "description": "A short, gentle auxiliary message accompanying the quote to provide context or encouragement."
+        },
+        "question": {
+          "type": "string",
+          "description": "A reflective question associated with the quote, designed to encourage user introspection."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "A numeric value used to influence the display order of quotes."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "A flag indicating whether this quote is currently active and available for display."
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "Summary": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Summary",
+      "type": "object",
+      "description": "Stores periodic summaries of user activities and statistics, supporting weekly, monthly, and yearly reports.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Summary entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User this summary belongs to. (Relationship: User 1:N Summary)"
+        },
+        "summaryType": {
+          "type": "string",
+          "description": "The type of summary, e.g., 'weekly', 'monthly', or 'yearly'."
+        },
+        "startDate": {
+          "type": "string",
+          "description": "The start date of the period covered by this summary.",
+          "format": "date"
+        },
+        "endDate": {
+          "type": "string",
+          "description": "The end date of the period covered by this summary.",
+          "format": "date"
+        },
+        "summaryText": {
+          "type": "string",
+          "description": "A personalized reflection or memo written by the user for the summarized period."
+        },
+        "totalEventsCount": {
+          "type": "number",
+          "description": "The total number of events recorded within the summary period."
+        },
+        "urgentImportantCount": {
+          "type": "number",
+          "description": "Count of events classified as 'Urgent & Important' within the summary period."
+        },
+        "notUrgentImportantCount": {
+          "type": "number",
+          "description": "Count of events classified as 'Not Urgent & Important' within the summary period."
+        },
+        "urgentNotImportantCount": {
+          "type": "number",
+          "description": "Count of events classified as 'Urgent & Not Important' within the summary period."
+        },
+        "notUrgentNotImportantCount": {
+          "type": "number",
+          "description": "Count of events classified as 'Not Urgent & Not Important' within the summary period."
+        },
+        "doneCount": {
+          "type": "number",
+          "description": "Count of past events marked as 'done' within the summary period."
+        },
+        "failedCount": {
+          "type": "number",
+          "description": "Count of past events marked as 'failed' within the summary period."
+        },
+        "cancelledCount": {
+          "type": "number",
+          "description": "Count of past events marked as 'cancelled' within the summary period."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the summary record was first created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of the last modification to the summary record.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "summaryType",
+        "startDate",
+        "endDate"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores individual user profiles and application settings. Access is restricted to the authenticated user matching the 'userId' parameter in the path. Includes fields for tracking consistent application use. Authorization rules leverage the 'userId' path parameter for independence, removing the need for 'get()' operations."
+        }
+      },
+      {
+        "path": "/users/{userId}/events/{eventId}",
+        "definition": {
+          "entityName": "Event",
+          "schema": {
+            "$ref": "#/backend/entities/Event"
+          },
+          "description": "Stores detailed event information for a specific user, including data imported from Google Calendar, app-specific quadrant classifications, and daily report statuses. Each event belongs to a 'User'. The 'userId' is denormalized into the path, ensuring Authorization Independence without relying on 'get()' calls in security rules. Querying and listing events for a specific user is efficient and secure, as the 'userId' in the path naturally scopes the operation (QAPs).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the User who owns this event."
+            },
+            {
+              "name": "eventId",
+              "description": "The unique identifier for the Event."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/summaries/{summaryId}",
+        "definition": {
+          "entityName": "Summary",
+          "schema": {
+            "$ref": "#/backend/entities/Summary"
+          },
+          "description": "Stores periodic summaries (e.g., weekly, monthly, yearly) of a user's activities and statistics. Each summary belongs to a 'User'. The 'userId' is denormalized into the path, ensuring Authorization Independence and simplifying security rules. Listing summaries for a specific user is efficient and secure due to the path-based ownership (QAPs).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the User to whom this summary belongs."
+            },
+            {
+              "name": "summaryId",
+              "description": "The unique identifier for the Summary."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/quotes/{quoteId}",
+        "definition": {
+          "entityName": "Quote",
+          "schema": {
+            "$ref": "#/backend/entities/Quote"
+          },
+          "description": "Stores motivational quotes and associated prompts. This collection is designed for public, read-only access by all users. Its structural segregation from user-specific data ensures different security postures (public read) and removes any authorization dependencies, making security rules simple ('allow read: true;'). Listing quotes for display is therefore highly efficient (QAPs).",
+          "params": [
+            {
+              "name": "quoteId",
+              "description": "The unique identifier for the Quote."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to be secure, scalable, and debuggable, adhering to the core design principles and strategy mandates. \n\n**Authorization Independence via Denormalization:**\n\n*   For user-specific collections like `/users/{userId}/events` and `/users/{userId}/summaries`, the `userId` is embedded directly into the document path (e.g., `{userId}`). This makes the owner's `uid` directly accessible as a path parameter in Firestore Security Rules (`match /users/{userId}/events/{eventId}`). This eliminates the need for expensive and complex `get()` calls to a parent document to determine ownership or permissions, ensuring atomic operations and simplifying rule logic. The `userId` field within the 'Event' and 'Summary' documents also acts as a denormalized reference, further reinforcing ownership and enabling direct queries or data integrity checks, even though the path parameter is sufficient for authorization rules.\n\n*   The `Quote` collection (`/quotes/{quoteId}`) is globally accessible and read-only. This segregation removes any authorization dependencies and simplifies its security posture to a simple 'allow read: true;'.\n\n**Clarity of Intent and Debuggability:**\n\n*   The hierarchical path structure (`/users/{userId}/events/{eventId}`, `/users/{userId}/summaries/{summaryId}`) explicitly defines ownership, making it clear that 'events' and 'summaries' belong to a specific user. This direct mapping simplifies security rule writing, as rules only need to compare `request.auth.uid` with the `{userId}` in the path.\n\n*   The use of descriptive wildcards (e.g., `{userId}`, `{eventId}`, `{summaryId}`, `{quoteId}`) enhances readability and makes the intent of each path segment clear.\n\n**QAPs (Rules are not Filters):**\n\n*   **User-Specific Data (`/users/{userId}/events`, `/users/{userId}/summaries`):** By nesting 'events' and 'summaries' under a user's document, `list` queries on these subcollections are inherently constrained to the specific `{userId}` in the path. Security rules can then simply `allow list: request.auth.uid == userId;`. This ensures that any `list` operation automatically returns only the documents owned by the authenticated user, thus preventing rules from acting as filters over a broader, unauthorized dataset.\n\n*   **Public Data (`/quotes/{quoteId}`):** The `quotes` collection is designed for public read access. A simple rule like `allow read: true;` will permit efficient `list` operations without any filtering by the rules themselves, as all data in this collection is intended to be public.\n\n**DBAC and Invariants:**\n\n*   All user-specific roles and authorization are handled via `request.auth.uid` against the `userId` in the path, adhering to the DBAC principle (no custom claims needed for this MVP). No complex global roles are required at this stage.\n\n*   Fields like `createdAt`, `updatedAt`, `ownerId` (implicitly `userId` in path and document field), `isConsistentUser`, `consistencyStartDate`, `syncStatus`, `reportStatus`, and `quadrantCategory` are explicitly defined within the schemas, supporting data integrity and predictable state management."
+  }
+}
