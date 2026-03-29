@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -14,6 +13,8 @@ import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
 export default function ReportPage() {
+  const db = useFirestore();
+  const { user, isUserLoading } = useUser();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -21,30 +22,36 @@ export default function ReportPage() {
 
   useEffect(() => {
     const fetchPastEvents = async () => {
-      const user = auth.currentUser;
       if (!user) return;
 
       const today = new Date();
       today.setHours(23, 59, 59, 999);
-      const eventsRef = collection(db, "events");
+      const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
-        where("userId", "==", user.uid), 
         where("startAt", "<=", today.toISOString()),
         orderBy("startAt", "desc")
       );
 
-      const snap = await getDocs(q);
-      setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
-      setLoading(false);
+      try {
+        const snap = await getDocs(q);
+        setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
+      } catch (err) {
+        console.error("Fetch past events failed:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchPastEvents();
-  }, []);
+    if (!isUserLoading && user) {
+      fetchPastEvents();
+    }
+  }, [user, isUserLoading, db]);
 
   const handleStatusUpdate = async (eventId: string, status: ReportStatus) => {
+    if (!user) return;
     try {
-      const eventDoc = doc(db, "events", eventId);
+      const eventDoc = doc(db, "users", user.uid, "events", eventId);
       await updateDoc(eventDoc, {
         reportStatus: status,
         reportMemo: memo || "",
@@ -58,7 +65,7 @@ export default function ReportPage() {
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">

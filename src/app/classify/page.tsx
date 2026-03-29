@@ -1,64 +1,70 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock, ChevronRight, ChevronLeft, Info } from "lucide-react";
+import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
 export default function ClassifyPage() {
+  const db = useFirestore();
+  const { user, isUserLoading } = useUser();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
     const fetchFutureEvents = async () => {
-      const user = auth.currentUser;
       if (!user) return;
 
       const now = new Date().toISOString();
-      const eventsRef = collection(db, "events");
+      const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
-        where("userId", "==", user.uid), 
         where("startAt", ">=", now),
         where("quadrantCategory", "==", null),
         orderBy("startAt", "asc")
       );
 
-      const snap = await getDocs(q);
-      const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent));
-      setEvents(fetched);
-      setLoading(false);
+      try {
+        const snap = await getDocs(q);
+        const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent));
+        setEvents(fetched);
+      } catch (err) {
+        console.error("Fetch events failed:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchFutureEvents();
-  }, []);
+    if (!isUserLoading && user) {
+      fetchFutureEvents();
+    }
+  }, [user, isUserLoading, db]);
 
   const handleClassify = async (category: QuadrantCategory) => {
-    if (!events[currentIndex]) return;
+    if (!events[currentIndex] || !user) return;
     const event = events[currentIndex];
     
     try {
-      const eventDoc = doc(db, "events", event.id);
+      const eventDoc = doc(db, "users", user.uid, "events", event.id);
       await updateDoc(eventDoc, {
         quadrantCategory: category,
         updatedAt: Date.now(),
-        syncStatus: 'pending' // MVP sync simulation
+        syncStatus: 'pending'
       });
 
-      // Move to next or remove from local list
       if (currentIndex < events.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
-        setEvents(events.filter((_, i) => i !== currentIndex));
+        const remaining = events.filter((_, i) => i !== currentIndex);
+        setEvents(remaining);
         setCurrentIndex(0);
       }
     } catch (err) {
@@ -66,7 +72,7 @@ export default function ClassifyPage() {
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   const currentEvent = events[currentIndex];
 
@@ -116,7 +122,6 @@ export default function ClassifyPage() {
         )}
       </main>
 
-      {/* Control Panel */}
       {currentEvent && (
         <div className="fixed bottom-24 left-0 right-0 px-6 max-w-md mx-auto z-40">
            <div className="grid grid-cols-2 gap-3">

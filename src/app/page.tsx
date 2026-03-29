@@ -1,9 +1,8 @@
-
 "use client";
 
-import { useEffect, useState } from "react";
-import { signInWithPopup, onAuthStateChanged, User } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
+import { useEffect } from "react";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { useAuth, useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,28 +11,27 @@ import { LogIn, Sparkles } from "lucide-react";
 
 export default function LandingPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.push("/home");
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [router]);
+    if (!isUserLoading && user) {
+      router.push("/home");
+    }
+  }, [user, isUserLoading, router]);
 
   const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    provider.addScope('https://www.googleapis.com/auth/calendar.events');
     try {
-      await signInWithPopup(auth, googleProvider);
-      router.push("/home");
+      await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Login failed:", error);
     }
   };
 
-  if (loading) return null;
+  if (isUserLoading) return null;
 
   return (
     <div className="flex flex-col min-h-screen bg-background items-center justify-center p-6">

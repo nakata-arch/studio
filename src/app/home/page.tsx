@@ -1,22 +1,22 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MOCK_QUOTES } from "@/lib/mock-data";
-import { Quote, AppEvent } from "@/lib/types";
+import { Quote } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Calendar, CheckCircle2, ListTodo, Trophy, CloudOff } from "lucide-react";
 import Link from "next/link";
 
 export default function HomePage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const db = useFirestore();
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [stats, setStats] = useState({
     todayCount: 0,
@@ -26,32 +26,31 @@ export default function HomePage() {
   const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/");
-      } else {
-        setUser(user);
-        fetchStats(user.uid);
-      }
-    });
+    if (!isUserLoading && !user) {
+      router.push("/");
+    }
+  }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    if (user) {
+      fetchStats(user.uid);
+    }
 
     const handleOnlineStatus = () => setIsOffline(!navigator.onLine);
     window.addEventListener('online', handleOnlineStatus);
     window.addEventListener('offline', handleOnlineStatus);
     setIsOffline(!navigator.onLine);
 
-    // Morning/Evening logic for quotes
     const hour = new Date().getHours();
     const timing = hour < 12 ? 'morning' : hour > 18 ? 'evening' : 'any';
     const filteredQuotes = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
     setQuote(filteredQuotes[Math.floor(Math.random() * filteredQuotes.length)]);
 
     return () => {
-      unsubscribe();
       window.removeEventListener('online', handleOnlineStatus);
       window.removeEventListener('offline', handleOnlineStatus);
     };
-  }, [router]);
+  }, [user]);
 
   const fetchStats = async (uid: string) => {
     try {
@@ -59,18 +58,15 @@ export default function HomePage() {
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
       const todayEnd = new Date(now.setHours(23, 59, 59, 999)).toISOString();
 
-      const eventsRef = collection(db, "events");
+      const eventsRef = collection(db, "users", uid, "events");
       
-      // Today's events
-      const todayQuery = query(eventsRef, where("userId", "==", uid), where("startAt", ">=", todayStart), where("startAt", "<=", todayEnd));
+      const todayQuery = query(eventsRef, where("startAt", ">=", todayStart), where("startAt", "<=", todayEnd));
       const todaySnap = await getDocs(todayQuery);
       
-      // Future unclassified
-      const unclassifiedQuery = query(eventsRef, where("userId", "==", uid), where("quadrantCategory", "==", null));
+      const unclassifiedQuery = query(eventsRef, where("quadrantCategory", "==", null));
       const unclassifiedSnap = await getDocs(unclassifiedQuery);
       
-      // Past unreported
-      const unreportedQuery = query(eventsRef, where("userId", "==", uid), where("reportStatus", "==", null), where("startAt", "<", todayStart));
+      const unreportedQuery = query(eventsRef, where("reportStatus", "==", null), where("startAt", "<", todayStart));
       const unreportedSnap = await getDocs(unreportedQuery);
 
       setStats({
@@ -83,7 +79,7 @@ export default function HomePage() {
     }
   };
 
-  if (!user) return null;
+  if (isUserLoading || !user) return null;
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
@@ -99,7 +95,6 @@ export default function HomePage() {
       </header>
 
       <main className="px-6 space-y-6">
-        {/* Quote Card */}
         {quote && (
           <Card className="border-none bg-gradient-to-br from-primary/10 to-accent/10 shadow-sm overflow-hidden">
             <CardHeader className="pb-2">
@@ -121,7 +116,6 @@ export default function HomePage() {
           </Card>
         )}
 
-        {/* Action Grid */}
         <div className="grid grid-cols-1 gap-4">
           <Link href="/classify">
             <Card className="hover:border-primary transition-colors">

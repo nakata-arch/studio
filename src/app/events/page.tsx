@@ -1,42 +1,48 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { useFirestore, useUser } from "@/firebase";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Calendar as CalendarIcon, Clock, Filter } from "lucide-react";
+import { Loader2, Clock, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 
 export default function EventsPage() {
+  const db = useFirestore();
+  const { user, isUserLoading } = useUser();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAllEvents = async () => {
-      const user = auth.currentUser;
       if (!user) return;
 
-      const eventsRef = collection(db, "events");
+      const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
-        where("userId", "==", user.uid), 
         orderBy("startAt", "desc")
       );
 
-      const snap = await getDocs(q);
-      setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
-      setLoading(false);
+      try {
+        const snap = await getDocs(q);
+        setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
+      } catch (err) {
+        console.error("Fetch all events failed:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchAllEvents();
-  }, []);
+    if (!isUserLoading && user) {
+      fetchAllEvents();
+    }
+  }, [user, isUserLoading, db]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
