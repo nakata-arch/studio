@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth, useUser, useFirestore } from "@/firebase";
+import { useAuth, useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { Navigation } from "@/components/Navigation";
@@ -20,7 +20,8 @@ import {
   Sparkles,
   Calendar as CalendarIcon,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,7 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
   const [fetchedEvents, setFetchedEvents] = useState<any[]>([]);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [apiEnableUrl, setApiEnableUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -66,6 +68,7 @@ export default function SettingsPage() {
     if (!user) return;
     setSyncStatus('syncing');
     setSyncError(null);
+    setApiEnableUrl(null);
     setFetchedEvents([]);
 
     const provider = new GoogleAuthProvider();
@@ -73,42 +76,45 @@ export default function SettingsPage() {
     provider.addScope('https://www.googleapis.com/auth/calendar.events');
 
     try {
-      // 1. signInWithPopup から accessToken を取得
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      console.log("--- Sync Debug Log Start ---");
-      console.log("1. accessToken取得可否:", !!accessToken);
+      console.log("--- Google Calendar Sync Debug ---");
+      console.log("1. Access Token Acquired:", !!accessToken);
 
       if (!accessToken) {
-        throw new Error("アクセストークンの取得に失敗しました。");
+        throw new Error("アクセストークンの取得に失敗しました。再度ログインしてください。");
       }
 
-      // 2. Google Calendar API を fetch (primary calendar)
       const now = new Date().toISOString();
       const response = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&maxResults=10&singleEvents=true&orderBy=startTime`,
         {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
 
-      console.log("2. calendar api status:", response.status);
-
+      console.log("2. Calendar API Status:", response.status);
       const body = await response.json();
-      console.log("3. response body:", body);
+      console.log("3. Response Body:", body);
 
       if (!response.ok) {
-        throw new Error(`APIエラー: ${body.error?.message || response.statusText}`);
+        const errorMsg = body.error?.message || response.statusText;
+        console.error("Calendar API Error:", errorMsg);
+
+        if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
+          // APIが有効化されていない場合、プロジェクトIDを特定してリンクを提示
+          const projectId = body.error?.message.match(/project (\d+)/)?.[1] || "your-project";
+          setApiEnableUrl(`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=${projectId}`);
+          throw new Error("Google Calendar APIが有効化されていません。Cloud Consoleで有効にする必要があります。");
+        }
+        throw new Error(`APIエラー: ${errorMsg}`);
       }
 
       const items = body.items || [];
-      console.log("4. items.length:", items.length);
+      console.log("4. Items Count:", items.length);
 
-      // 5. 予定のプレビュー（正規化）
       const normalizedEvents = items.map((item: any) => ({
         id: item.id,
         title: item.summary || "(タイトルなし)",
@@ -117,9 +123,7 @@ export default function SettingsPage() {
         description: item.description || "",
       }));
 
-      console.log("5. normalized events preview:", normalizedEvents);
-      console.log("--- Sync Debug Log End ---");
-
+      console.log("5. Normalized Events:", normalizedEvents);
       setFetchedEvents(normalizedEvents);
       setSyncStatus('success');
       
@@ -129,14 +133,14 @@ export default function SettingsPage() {
       });
 
     } catch (error: any) {
-      console.error("Sync failed:", error);
-      setSyncError(error.message || "同期中に不明なエラーが発生しました。");
+      console.error("Sync Process Error:", error);
+      setSyncError(error.message);
       setSyncStatus('failed');
       
       toast({
         variant: "destructive",
         title: "同期失敗",
-        description: error.message || "カレンダーの同期中にエラーが発生しました。",
+        description: error.message,
       });
     }
   };
@@ -165,7 +169,6 @@ export default function SettingsPage() {
       </header>
 
       <main className="px-6 space-y-6">
-        {/* Profile Card */}
         <Card className="border-none shadow-lg bg-card overflow-hidden">
           <CardContent className="p-6">
             <div className="flex items-center gap-4 mb-6">
@@ -206,7 +209,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Sync Status Feedback */}
         {syncStatus !== 'idle' && (
           <Card className="border-none shadow-md overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
             <CardHeader className="pb-2">
@@ -217,12 +219,22 @@ export default function SettingsPage() {
                 同期ステータス
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               {syncStatus === 'syncing' && <p className="text-sm text-muted-foreground">Googleカレンダーから情報を取得しています...</p>}
               {syncStatus === 'failed' && (
-                <div className="text-sm text-destructive bg-destructive/5 p-3 rounded-lg border border-destructive/10">
-                  <p className="font-bold">同期に失敗しました</p>
-                  <p className="text-xs opacity-80">{syncError}</p>
+                <div className="space-y-3">
+                  <div className="text-sm text-destructive bg-destructive/5 p-3 rounded-lg border border-destructive/10">
+                    <p className="font-bold">同期に失敗しました</p>
+                    <p className="text-xs opacity-80 mt-1">{syncError}</p>
+                  </div>
+                  {apiEnableUrl && (
+                    <Button asChild variant="default" className="w-full gap-2 text-xs">
+                      <a href={apiEnableUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3 w-3" />
+                        Google Cloud ConsoleでAPIを有効化する
+                      </a>
+                    </Button>
+                  )}
                 </div>
               )}
               {syncStatus === 'success' && (
@@ -253,7 +265,6 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Quote Card */}
         {quote && (
           <Card className="border-none bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-xl overflow-hidden relative">
             <div className="absolute top-0 right-0 p-4 opacity-10">
