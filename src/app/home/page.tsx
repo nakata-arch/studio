@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,8 @@ import { Quote } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Calendar, CheckCircle2, ListTodo, Trophy, CloudOff } from "lucide-react";
 import Link from "next/link";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function HomePage() {
   const router = useRouter();
@@ -53,13 +56,12 @@ export default function HomePage() {
   }, [user]);
 
   const fetchStats = async (uid: string) => {
+    const eventsRef = collection(db, "users", uid, "events");
     try {
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
       const todayEnd = new Date(now.setHours(23, 59, 59, 999)).toISOString();
 
-      const eventsRef = collection(db, "users", uid, "events");
-      
       const todayQuery = query(eventsRef, where("startAt", ">=", todayStart), where("startAt", "<=", todayEnd));
       const todaySnap = await getDocs(todayQuery);
       
@@ -74,8 +76,15 @@ export default function HomePage() {
         unclassifiedCount: unclassifiedSnap.size,
         unreportedCount: unreportedSnap.size,
       });
-    } catch (err) {
-      console.error("Stats fetch error:", err);
+    } catch (err: any) {
+      if (err.code === 'permission-denied') {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: eventsRef.path,
+          operation: 'list',
+        }));
+      } else {
+        console.error("Stats fetch error:", err);
+      }
     }
   };
 

@@ -2,18 +2,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
-import { AppEvent, QuadrantCategory, ReportStatus } from "@/lib/types";
+import { useFirestore, useUser } from "@/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Sparkles, BarChart, Calendar } from "lucide-react";
-import { startOfWeek, endOfWeek, format, subDays } from "date-fns";
+import { startOfWeek, endOfWeek, format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function WeeklyPage() {
+  const db = useFirestore();
+  const { user, isUserLoading } = useUser();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     total: 0,
@@ -33,62 +37,73 @@ export default function WeeklyPage() {
 
   useEffect(() => {
     const fetchWeekData = async () => {
-      const user = auth.currentUser;
       if (!user) return;
 
       const now = new Date();
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
-      const eventsRef = collection(db, "events");
+      const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
-        where("userId", "==", user.uid), 
         where("startAt", ">=", weekStart.toISOString()),
         where("startAt", "<=", weekEnd.toISOString())
       );
 
-      const snap = await getDocs(q);
-      const fetchedEvents = snap.docs.map(doc => doc.data() as AppEvent);
-
-      const newStats = {
-        total: fetchedEvents.length,
-        quadrants: {
-          urgent_important: fetchedEvents.filter(e => e.quadrantCategory === 'urgent_important').length,
-          not_urgent_important: fetchedEvents.filter(e => e.quadrantCategory === 'not_urgent_important').length,
-          urgent_not_important: fetchedEvents.filter(e => e.quadrantCategory === 'urgent_not_important').length,
-          not_urgent_not_important: fetchedEvents.filter(e => e.quadrantCategory === 'not_urgent_not_important').length,
-        },
-        status: {
-          done: fetchedEvents.filter(e => e.reportStatus === 'done').length,
-          failed: fetchedEvents.filter(e => e.reportStatus === 'failed').length,
-          cancelled: fetchedEvents.filter(e => e.reportStatus === 'cancelled').length,
-        }
-      };
-
-      setStats(newStats);
-
-      // Trigger AI Summary
       try {
-        const result = await aiWeeklyReportSummary({
-          targetPeriod: `${format(weekStart, "MM/dd")} - ${format(weekEnd, "MM/dd")}`,
-          eventCount: newStats.total,
-          quadrantCounts: newStats.quadrants,
-          statusCounts: newStats.status,
-          userReflection: "今週は少しタスクが多すぎたかもしれません。"
-        });
-        setAiResult(result);
-      } catch (err) {
-        console.error("AI Summary generation failed:", err);
-      }
+        const snap = await getDocs(q);
+        const fetchedEvents = snap.docs.map(doc => doc.data() as AppEvent);
 
-      setLoading(false);
+        const newStats = {
+          total: fetchedEvents.length,
+          quadrants: {
+            urgent_important: fetchedEvents.filter(e => e.quadrantCategory === 'urgent_important').length,
+            not_urgent_important: fetchedEvents.filter(e => e.quadrantCategory === 'not_urgent_important').length,
+            urgent_not_important: fetchedEvents.filter(e => e.quadrantCategory === 'urgent_not_important').length,
+            not_urgent_not_important: fetchedEvents.filter(e => e.quadrantCategory === 'not_urgent_not_important').length,
+          },
+          status: {
+            done: fetchedEvents.filter(e => e.reportStatus === 'done').length,
+            failed: fetchedEvents.filter(e => e.reportStatus === 'failed').length,
+            cancelled: fetchedEvents.filter(e => e.reportStatus === 'cancelled').length,
+          }
+        };
+
+        setStats(newStats);
+
+        // Trigger AI Summary
+        try {
+          const result = await aiWeeklyReportSummary({
+            targetPeriod: `${format(weekStart, "MM/dd")} - ${format(weekEnd, "MM/dd")}`,
+            eventCount: newStats.total,
+            quadrantCounts: newStats.quadrants,
+            statusCounts: newStats.status,
+            userReflection: "今週の活動を振り返ります。"
+          });
+          setAiResult(result);
+        } catch (err) {
+          console.error("AI Summary generation failed:", err);
+        }
+      } catch (err: any) {
+        if (err.code === 'permission-denied') {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: eventsRef.path,
+            operation: 'list',
+          }));
+        } else {
+          console.error("Fetch week data failed:", err);
+        }
+      } finally {
+        setLoading(false);
+      }
     };
 
-    fetchWeekData();
-  }, []);
+    if (!isUserLoading && user) {
+      fetchWeekData();
+    }
+  }, [user, isUserLoading, db]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
@@ -103,7 +118,6 @@ export default function WeeklyPage() {
       </header>
 
       <main className="px-6 space-y-6">
-        {/* Total Summary */}
         <div className="grid grid-cols-2 gap-4">
           <Card className="bg-primary text-primary-foreground shadow-lg border-none">
             <CardContent className="p-4 flex flex-col items-center justify-center">
@@ -121,7 +135,6 @@ export default function WeeklyPage() {
           </Card>
         </div>
 
-        {/* AI Insight Section */}
         <Card className="border-none shadow-sm bg-gradient-to-br from-indigo-50 to-purple-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-indigo-700">
@@ -147,7 +160,6 @@ export default function WeeklyPage() {
           </CardContent>
         </Card>
 
-        {/* Quadrant Stats */}
         <Card className="border-none shadow-sm">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -172,7 +184,6 @@ export default function WeeklyPage() {
           </CardContent>
         </Card>
 
-        {/* Status Stats */}
         <Card className="border-none shadow-sm">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">

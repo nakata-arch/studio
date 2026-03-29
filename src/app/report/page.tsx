@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Check, X, Ban, Loader2, MessageSquare, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function ReportPage() {
   const db = useFirestore();
@@ -36,8 +39,15 @@ export default function ReportPage() {
       try {
         const snap = await getDocs(q);
         setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
-      } catch (err) {
-        console.error("Fetch past events failed:", err);
+      } catch (err: any) {
+        if (err.code === 'permission-denied') {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: eventsRef.path,
+            operation: 'list',
+          }));
+        } else {
+          console.error("Fetch past events failed:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -50,19 +60,27 @@ export default function ReportPage() {
 
   const handleStatusUpdate = async (eventId: string, status: ReportStatus) => {
     if (!user) return;
-    try {
-      const eventDoc = doc(db, "users", user.uid, "events", eventId);
-      await updateDoc(eventDoc, {
-        reportStatus: status,
-        reportMemo: memo || "",
-        updatedAt: Date.now()
+    const eventDoc = doc(db, "users", user.uid, "events", eventId);
+    const updateData = {
+      reportStatus: status,
+      reportMemo: memo || "",
+      updatedAt: Date.now()
+    };
+
+    updateDoc(eventDoc, updateData)
+      .then(() => {
+        setEvents(events.map(ev => ev.id === eventId ? { ...ev, reportStatus: status, reportMemo: memo } : ev));
+        setSelectedEventId(null);
+        setMemo("");
+      })
+      .catch(async (err) => {
+        const permissionError = new FirestorePermissionError({
+          path: eventDoc.path,
+          operation: 'update',
+          requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-      setEvents(events.map(ev => ev.id === eventId ? { ...ev, reportStatus: status, reportMemo: memo } : ev));
-      setSelectedEventId(null);
-      setMemo("");
-    } catch (err) {
-      console.error("Report update failed:", err);
-    }
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;

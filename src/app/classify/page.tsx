@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function ClassifyPage() {
   const db = useFirestore();
@@ -36,8 +39,15 @@ export default function ClassifyPage() {
         const snap = await getDocs(q);
         const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent));
         setEvents(fetched);
-      } catch (err) {
-        console.error("Fetch events failed:", err);
+      } catch (err: any) {
+        if (err.code === 'permission-denied') {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: eventsRef.path,
+            operation: 'list',
+          }));
+        } else {
+          console.error("Fetch events failed:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -52,24 +62,31 @@ export default function ClassifyPage() {
     if (!events[currentIndex] || !user) return;
     const event = events[currentIndex];
     
-    try {
-      const eventDoc = doc(db, "users", user.uid, "events", event.id);
-      await updateDoc(eventDoc, {
-        quadrantCategory: category,
-        updatedAt: Date.now(),
-        syncStatus: 'pending'
-      });
+    const eventDoc = doc(db, "users", user.uid, "events", event.id);
+    const updateData = {
+      quadrantCategory: category,
+      updatedAt: Date.now(),
+      syncStatus: 'pending'
+    };
 
-      if (currentIndex < events.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        const remaining = events.filter((_, i) => i !== currentIndex);
-        setEvents(remaining);
-        setCurrentIndex(0);
-      }
-    } catch (err) {
-      console.error("Classification update failed:", err);
-    }
+    updateDoc(eventDoc, updateData)
+      .then(() => {
+        if (currentIndex < events.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+        } else {
+          const remaining = events.filter((_, i) => i !== currentIndex);
+          setEvents(remaining);
+          setCurrentIndex(0);
+        }
+      })
+      .catch(async (err) => {
+        const permissionError = new FirestorePermissionError({
+          path: eventDoc.path,
+          operation: 'update',
+          requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
