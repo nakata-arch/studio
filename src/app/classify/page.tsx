@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,8 +8,8 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
-import { format, addDays, startOfDay, isAfter, isBefore } from "date-fns";
+import { Loader2, Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
+import { format, isBefore, startOfDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -26,10 +25,6 @@ export default function ClassifyPage() {
     const fetchClassifyEvents = async () => {
       if (!user) return;
 
-      const now = new Date();
-      const todayStart = startOfDay(now);
-      const endLimit = addDays(todayStart, 30);
-      
       const eventsRef = collection(db, "users", user.uid, "events");
       
       // インデックスエラーを避けるため、orderByのみのシンプルなクエリを使用
@@ -40,17 +35,11 @@ export default function ClassifyPage() {
         const allEvents = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
         
         // クライアント側で条件フィルタリング
-        const filtered = allEvents.filter(ev => {
-          const eventDate = new Date(ev.startAt);
-          const isUnclassified = !ev.quadrantCategory;
-          const isFuture = isAfter(eventDate, todayStart) || eventDate.getTime() === todayStart.getTime();
-          const isWithin30Days = isBefore(eventDate, endLimit);
-          
-          return isUnclassified && isFuture && isWithin30Days;
-        });
+        // 「優先度（quadrantCategory）が未設定」のものを過去・未来問わずすべて抽出
+        const filtered = allEvents.filter(ev => !ev.quadrantCategory);
 
         console.log("Firestore 取得総数:", allEvents.length);
-        console.log("分類対象 (未分類/30日以内):", filtered.length);
+        console.log("未分類予定数:", filtered.length);
         
         setEvents(filtered);
       } catch (err: any) {
@@ -86,6 +75,7 @@ export default function ClassifyPage() {
       .then(() => {
         const nextEvents = events.filter((_, i) => i !== currentIndex);
         setEvents(nextEvents);
+        // インデックスが範囲外にならないよう調整
         if (currentIndex >= nextEvents.length && nextEvents.length > 0) {
           setCurrentIndex(nextEvents.length - 1);
         }
@@ -103,12 +93,13 @@ export default function ClassifyPage() {
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   const currentEvent = events[currentIndex];
+  const isPastEvent = currentEvent && isBefore(new Date(currentEvent.startAt), startOfDay(new Date()));
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
       <header className="p-6 pt-12">
-        <h1 className="text-3xl font-bold">未来の予定を分類</h1>
-        <p className="text-muted-foreground text-sm">30日以内の未分類予定を4象限に分けましょう</p>
+        <h1 className="text-3xl font-bold font-headline">分類</h1>
+        <p className="text-muted-foreground text-sm">優先度が未設定の予定を4象限に分けましょう</p>
       </header>
 
       <main className="flex-1 px-6 flex flex-col items-center justify-center gap-8">
@@ -119,16 +110,21 @@ export default function ClassifyPage() {
             </div>
             <h2 className="text-xl font-semibold">すべての分類が完了！</h2>
             <p className="text-muted-foreground text-sm px-10">
-              現在、分類が必要な新しい予定はありません。
+              現在、分類が必要な未設定の予定はありません。
             </p>
           </div>
         ) : (
           <>
             <div className="w-full flex justify-between items-center text-xs text-muted-foreground mb-[-20px]">
               <span>{currentIndex + 1} / {events.length}件</span>
+              {isPastEvent && (
+                <span className="flex items-center gap-1 text-orange-600 font-bold">
+                  <AlertCircle className="h-3 w-3" /> 過去の予定
+                </span>
+              )}
             </div>
             <Card className="w-full shadow-lg border-none bg-card/80 backdrop-blur-sm relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+               <div className={`absolute top-0 left-0 w-1 h-full ${isPastEvent ? 'bg-orange-400' : 'bg-primary'}`} />
                <CardHeader>
                 <div className="flex items-center gap-2 text-xs font-semibold text-primary mb-1">
                   <CalendarIcon className="h-3 w-3" />
