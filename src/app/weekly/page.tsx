@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFirestore, useUser } from "@/firebase";
+import { useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -43,6 +42,7 @@ export default function WeeklyPage() {
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
+      // Correctly using the user-specific subcollection path as per security rules
       const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
@@ -71,7 +71,6 @@ export default function WeeklyPage() {
 
         setStats(newStats);
 
-        // Trigger AI Summary
         try {
           const result = await aiWeeklyReportSummary({
             targetPeriod: `${format(weekStart, "MM/dd")} - ${format(weekEnd, "MM/dd")}`,
@@ -85,14 +84,12 @@ export default function WeeklyPage() {
           console.error("AI Summary generation failed:", err);
         }
       } catch (err: any) {
-        if (err.code === 'permission-denied') {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: eventsRef.path,
-            operation: 'list',
-          }));
-        } else {
-          console.error("Fetch week data failed:", err);
-        }
+        // Global error handling for permission issues
+        const permissionError = new FirestorePermissionError({
+          path: `users/${user.uid}/events`,
+          operation: 'list',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       } finally {
         setLoading(false);
       }
