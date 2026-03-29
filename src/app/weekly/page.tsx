@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -42,7 +43,6 @@ export default function WeeklyPage() {
       const weekStart = startOfWeek(now, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
-      // Correctly using the user-specific subcollection path as per security rules
       const eventsRef = collection(db, "users", user.uid, "events");
       const q = query(
         eventsRef, 
@@ -84,12 +84,12 @@ export default function WeeklyPage() {
           console.error("AI Summary generation failed:", err);
         }
       } catch (err: any) {
-        // Global error handling for permission issues
-        const permissionError = new FirestorePermissionError({
-          path: `users/${user.uid}/events`,
-          operation: 'list',
-        });
-        errorEmitter.emit('permission-error', permissionError);
+        if (err.code === 'permission-denied') {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: `users/${user.uid}/events`,
+            operation: 'list',
+          }));
+        }
       } finally {
         setLoading(false);
       }
@@ -108,9 +108,9 @@ export default function WeeklyPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
       <header className="p-6 pt-12">
-        <h1 className="text-3xl font-bold">今週の週報</h1>
+        <h1 className="text-3xl font-bold">日記</h1>
         <p className="text-muted-foreground text-sm">
-          {format(weekStart, "M月d日")} 〜 {format(weekEnd, "M月d日")} の活動記録
+          {format(weekStart, "M月d日")} 〜 {format(weekEnd, "M月d日")} の振り返り
         </p>
       </header>
 
@@ -178,29 +178,6 @@ export default function WeeklyPage() {
                 <Progress value={stats.total > 0 ? (q.count / stats.total) * 100 : 0} className="h-1.5" indicatorClassName={q.color} />
               </div>
             ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary" /> 実行ステータス
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             <div className="flex justify-around items-end h-24 gap-4">
-                {[
-                  { label: 'Done', count: stats.status.done, color: 'bg-green-500' },
-                  { label: 'Failed', count: stats.status.failed, color: 'bg-red-500' },
-                  { label: 'Cancelled', count: stats.status.cancelled, color: 'bg-gray-400' }
-                ].map(s => (
-                  <div key={s.label} className="flex flex-col items-center flex-1 gap-2">
-                    <div className={`${s.color} w-full rounded-t-lg transition-all duration-500`} style={{ height: `${stats.total > 0 ? (s.count / stats.total) * 100 : 0}%`, minHeight: '4px' }} />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">{s.label}</span>
-                    <span className="text-sm font-semibold">{s.count}</span>
-                  </div>
-                ))}
-             </div>
           </CardContent>
         </Card>
       </main>

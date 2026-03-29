@@ -88,7 +88,7 @@ export default function ReportPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
       <header className="p-6 pt-12">
-        <h1 className="text-3xl font-bold">日報入力</h1>
+        <h1 className="text-3xl font-bold">報告</h1>
         <p className="text-muted-foreground text-sm">過去の予定に実績を記録しましょう</p>
       </header>
 

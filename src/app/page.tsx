@@ -17,7 +17,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!isUserLoading && user) {
-      // ログイン後の遷移先を日報（/report）に変更
+      // ログイン後は「報告」ページへ遷移
       router.push("/report");
     }
   }, [user, isUserLoading, router]);
