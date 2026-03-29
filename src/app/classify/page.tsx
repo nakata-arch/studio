@@ -3,14 +3,14 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, where } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { Loader2, Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
+import { format, addDays, startOfDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -27,15 +27,15 @@ export default function ClassifyPage() {
       if (!user) return;
 
       const now = new Date();
-      const endLimit = addDays(now, 30); // 30日以内
+      const todayStart = startOfDay(now);
+      const endLimit = addDays(todayStart, 30);
       
       const eventsRef = collection(db, "users", user.uid, "events");
       
-      // 抽出条件: 今日以降、かつ quadrantCategory が未設定
+      // 複合クエリによるインデックスエラーを避けるため、シンプルなクエリで取得してクライアント側でフィルタリング
       const q = query(
         eventsRef, 
-        where("startAt", ">=", now.toISOString()),
-        where("quadrantCategory", "==", null),
+        where("startAt", ">=", todayStart.toISOString()),
         orderBy("startAt", "asc")
       );
 
@@ -43,10 +43,13 @@ export default function ClassifyPage() {
         const snap = await getDocs(q);
         const fetched = snap.docs
           .map(doc => ({ ...doc.data() } as AppEvent))
-          .filter(ev => new Date(ev.startAt) <= endLimit); // 30日以内の制限をクライアントで適用
+          .filter(ev => 
+            !ev.quadrantCategory && // 未分類
+            new Date(ev.startAt) <= endLimit // 30日以内
+          );
 
-        console.log("抽出条件 (/classify): 今日以降、30日以内、未分類");
-        console.log("Firestore 読込件数 (/classify):", fetched.length);
+        console.log("Firestore 読込件数 (/classify クエリ結果):", snap.docs.length);
+        console.log("フィルタリング後の件数 (未分類かつ30日以内):", fetched.length);
         
         setEvents(fetched);
       } catch (err: any) {
@@ -80,12 +83,12 @@ export default function ClassifyPage() {
 
     updateDoc(eventDoc, updateData)
       .then(() => {
-        if (currentIndex < events.length - 1) {
-          setCurrentIndex(prev => prev + 1);
-        } else {
-          const remaining = events.filter((_, i) => i !== currentIndex);
-          setEvents(remaining);
-          setCurrentIndex(0);
+        // 現在のカードをリストから取り除く
+        const nextEvents = events.filter((_, i) => i !== currentIndex);
+        setEvents(nextEvents);
+        // インデックスが範囲外にならないよう調整
+        if (currentIndex >= nextEvents.length && nextEvents.length > 0) {
+          setCurrentIndex(nextEvents.length - 1);
         }
       })
       .catch(async (err) => {
@@ -110,14 +113,14 @@ export default function ClassifyPage() {
       </header>
 
       <main className="flex-1 px-6 flex flex-col items-center justify-center gap-8">
-        {!currentEvent ? (
+        {events.length === 0 ? (
           <div className="text-center space-y-4">
             <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-              <Clock className="text-primary h-10 w-10" />
+              <CalendarIcon className="text-primary h-10 w-10" />
             </div>
             <h2 className="text-xl font-semibold">すべての分類が完了！</h2>
             <p className="text-muted-foreground text-sm px-10">
-              Firestoreのデータをすべて確認しました。素晴らしいスタートですね。
+              現在、分類が必要な新しい予定はありません。
             </p>
           </div>
         ) : (

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, where } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,20 +32,21 @@ export default function ReportPage() {
       
       const eventsRef = collection(db, "users", user.uid, "events");
       
-      // 抽出条件: 当日を含む過去、かつ reportStatus が未設定 (isReported != true)
+      // クエリをシンプルにして複合インデックス要件を回避
       const q = query(
         eventsRef, 
         where("startAt", "<=", todayEnd.toISOString()),
-        where("reportStatus", "==", null),
         orderBy("startAt", "desc")
       );
 
       try {
         const snap = await getDocs(q);
-        const fetched = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
+        const fetched = snap.docs
+          .map(doc => ({ ...doc.data() } as AppEvent))
+          .filter(ev => !ev.reportStatus); // 未報告のもののみ
         
-        console.log("抽出条件 (/report): 今日終了まで、かつ報告未完了");
-        console.log("Firestore 読込件数 (/report):", fetched.length);
+        console.log("Firestore 読込件数 (/report クエリ結果):", snap.docs.length);
+        console.log("フィルタリング後の件数 (未報告のみ):", fetched.length);
         
         setEvents(fetched);
       } catch (err: any) {
@@ -79,7 +80,7 @@ export default function ReportPage() {
 
     updateDoc(eventDoc, updateData)
       .then(() => {
-        setEvents(events.filter(ev => ev.id !== eventId)); // 完了したものはリストから消す
+        setEvents(events.filter(ev => ev.id !== eventId));
         setSelectedEventId(null);
         setMemo("");
       })
