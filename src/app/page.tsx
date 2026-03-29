@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from "react";
@@ -16,7 +17,8 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!isUserLoading && user) {
-      router.push("/home");
+      // ログイン後の遷移先を日報（/report）に変更
+      router.push("/report");
     }
   }, [user, isUserLoading, router]);
 

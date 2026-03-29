@@ -3,18 +3,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, BarChart3, ListTodo, ClipboardCheck } from "lucide-react";
+import { Calendar, BarChart3, ListTodo, ClipboardCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Navigation() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: "/home", label: "ホーム", icon: LayoutDashboard },
-    { href: "/classify", label: "分類", icon: ListTodo },
     { href: "/report", label: "日報", icon: ClipboardCheck },
+    { href: "/classify", label: "分類", icon: ListTodo },
     { href: "/events", label: "予定", icon: Calendar },
     { href: "/weekly", label: "週報", icon: BarChart3 },
+    { href: "/settings", label: "設定", icon: Settings },
   ];
 
   return (
