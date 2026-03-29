@@ -80,9 +80,6 @@ export default function SettingsPage() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      console.log("--- Google Calendar Sync Debug ---");
-      console.log("1. Access Token Acquired:", !!accessToken);
-
       if (!accessToken) {
         throw new Error("アクセストークンの取得に失敗しました。再度ログインしてください。");
       }
@@ -95,17 +92,14 @@ export default function SettingsPage() {
         }
       );
 
-      console.log("2. Calendar API Status:", response.status);
       const body = await response.json();
-      console.log("3. Response Body:", body);
 
       if (!response.ok) {
         const errorMsg = body.error?.message || response.statusText;
-        console.error("Calendar API Error:", errorMsg);
 
+        // API未有効化エラーの検知
         if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
-          // APIが有効化されていない場合、プロジェクトIDを特定してリンクを提示
-          const projectId = body.error?.message.match(/project (\d+)/)?.[1] || "your-project";
+          const projectId = errorMsg.match(/project (\d+)/)?.[1] || "34460193112";
           setApiEnableUrl(`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=${projectId}`);
           throw new Error("Google Calendar APIが有効化されていません。Cloud Consoleで有効にする必要があります。");
         }
@@ -113,8 +107,6 @@ export default function SettingsPage() {
       }
 
       const items = body.items || [];
-      console.log("4. Items Count:", items.length);
-
       const normalizedEvents = items.map((item: any) => ({
         id: item.id,
         title: item.summary || "(タイトルなし)",
@@ -123,7 +115,6 @@ export default function SettingsPage() {
         description: item.description || "",
       }));
 
-      console.log("5. Normalized Events:", normalizedEvents);
       setFetchedEvents(normalizedEvents);
       setSyncStatus('success');
       
@@ -133,7 +124,7 @@ export default function SettingsPage() {
       });
 
     } catch (error: any) {
-      console.error("Sync Process Error:", error);
+      // コンソールエラーを抑制し、UI状態として管理する
       setSyncError(error.message);
       setSyncStatus('failed');
       
