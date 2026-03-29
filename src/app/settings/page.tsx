@@ -4,11 +4,11 @@
 import { useEffect, useState } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MOCK_QUOTES } from "@/lib/mock-data";
-import { Quote, AppEvent } from "@/lib/types";
+import { Quote } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { 
   Trophy, 
@@ -17,21 +17,27 @@ import {
   RefreshCw,
   User as UserIcon,
   Mail,
-  Sparkles
+  Sparkles,
+  Calendar as CalendarIcon,
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { ja } from "date-fns/locale";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const db = useFirestore();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
+  const [fetchedEvents, setFetchedEvents] = useState<any[]>([]);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -58,59 +64,80 @@ export default function SettingsPage() {
 
   const handleSyncCalendar = async () => {
     if (!user) return;
-    setIsSyncing(true);
+    setSyncStatus('syncing');
+    setSyncError(null);
+    setFetchedEvents([]);
+
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    provider.addScope('https://www.googleapis.com/auth/calendar.events');
 
     try {
-      const eventsRef = collection(db, "users", user.uid, "events");
-      const existingEvents = await getDocs(eventsRef);
+      // 1. signInWithPopup から accessToken を取得
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
 
-      if (existingEvents.empty) {
-        const sampleEvents: Partial<AppEvent>[] = [
-          {
-            title: "戦略ミーティング",
-            startAt: new Date(Date.now() + 3600000).toISOString(),
-            endAt: new Date(Date.now() + 7200000).toISOString(),
-            calendarName: "メイン",
-            googleEventId: "sample-1",
-            syncStatus: "synced",
-          },
-          {
-            title: "週次レビュー",
-            startAt: new Date(Date.now() - 86400000).toISOString(),
-            endAt: new Date(Date.now() - 82800000).toISOString(),
-            calendarName: "仕事",
-            googleEventId: "sample-2",
-            syncStatus: "synced",
-          }
-        ];
+      console.log("--- Sync Debug Log Start ---");
+      console.log("1. accessToken取得可否:", !!accessToken);
 
-        for (const ev of sampleEvents) {
-          const newDocRef = doc(eventsRef);
-          await setDoc(newDocRef, {
-            ...ev,
-            id: newDocRef.id,
-            userId: user.uid,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isSharedCalendar: false,
-            lastSyncedAt: Date.now(),
-          });
-        }
+      if (!accessToken) {
+        throw new Error("アクセストークンの取得に失敗しました。");
       }
 
+      // 2. Google Calendar API を fetch (primary calendar)
+      const now = new Date().toISOString();
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&maxResults=10&singleEvents=true&orderBy=startTime`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      console.log("2. calendar api status:", response.status);
+
+      const body = await response.json();
+      console.log("3. response body:", body);
+
+      if (!response.ok) {
+        throw new Error(`APIエラー: ${body.error?.message || response.statusText}`);
+      }
+
+      const items = body.items || [];
+      console.log("4. items.length:", items.length);
+
+      // 5. 予定のプレビュー（正規化）
+      const normalizedEvents = items.map((item: any) => ({
+        id: item.id,
+        title: item.summary || "(タイトルなし)",
+        startAt: item.start?.dateTime || item.start?.date,
+        endAt: item.end?.dateTime || item.end?.date,
+        description: item.description || "",
+      }));
+
+      console.log("5. normalized events preview:", normalizedEvents);
+      console.log("--- Sync Debug Log End ---");
+
+      setFetchedEvents(normalizedEvents);
+      setSyncStatus('success');
+      
       toast({
-        title: "同期完了",
-        description: "Googleカレンダーの最新情報を取得しました。",
+        title: "同期成功",
+        description: `${normalizedEvents.length}件の予定を取得しました。`,
       });
-    } catch (error) {
+
+    } catch (error: any) {
       console.error("Sync failed:", error);
+      setSyncError(error.message || "同期中に不明なエラーが発生しました。");
+      setSyncStatus('failed');
+      
       toast({
         variant: "destructive",
         title: "同期失敗",
-        description: "カレンダーの同期中にエラーが発生しました。",
+        description: error.message || "カレンダーの同期中にエラーが発生しました。",
       });
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -134,7 +161,7 @@ export default function SettingsPage() {
             オフラインモードです。データは同期されません。
           </div>
         )}
-        <h1 className="text-3xl font-bold">設定</h1>
+        <h1 className="text-3xl font-bold font-headline">設定</h1>
       </header>
 
       <main className="px-6 space-y-6">
@@ -160,11 +187,11 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <Button 
                 onClick={handleSyncCalendar} 
-                disabled={isSyncing}
+                disabled={syncStatus === 'syncing'}
                 variant="outline" 
                 className="h-12 gap-2 font-semibold shadow-sm"
               >
-                <RefreshCw className={isSyncing ? "animate-spin h-4 w-4" : "h-4 w-4 text-primary"} />
+                <RefreshCw className={syncStatus === 'syncing' ? "animate-spin h-4 w-4" : "h-4 w-4 text-primary"} />
                 同期設定
               </Button>
               <Button 
@@ -178,6 +205,53 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Sync Status Feedback */}
+        {syncStatus !== 'idle' && (
+          <Card className="border-none shadow-md overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                {syncStatus === 'syncing' && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
+                {syncStatus === 'success' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                {syncStatus === 'failed' && <AlertCircle className="h-4 w-4 text-destructive" />}
+                同期ステータス
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {syncStatus === 'syncing' && <p className="text-sm text-muted-foreground">Googleカレンダーから情報を取得しています...</p>}
+              {syncStatus === 'failed' && (
+                <div className="text-sm text-destructive bg-destructive/5 p-3 rounded-lg border border-destructive/10">
+                  <p className="font-bold">同期に失敗しました</p>
+                  <p className="text-xs opacity-80">{syncError}</p>
+                </div>
+              )}
+              {syncStatus === 'success' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
+                    {fetchedEvents.length === 0 ? "取得可能な予定はありませんでした。" : `${fetchedEvents.length}件の予定を取得しました。`}
+                  </p>
+                  
+                  {fetchedEvents.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-muted-foreground uppercase">取得結果プレビュー（未保存）</p>
+                      <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                        {fetchedEvents.map((ev) => (
+                          <div key={ev.id} className="p-3 bg-muted/30 rounded-lg text-sm border border-border/50">
+                            <div className="font-semibold truncate">{ev.title}</div>
+                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <CalendarIcon className="h-3 w-3" />
+                              {format(new Date(ev.startAt), "M/d HH:mm", { locale: ja })} 〜
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quote Card */}
         {quote && (
