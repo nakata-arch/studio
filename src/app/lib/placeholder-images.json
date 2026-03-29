@@ -1,0 +1,11 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "landing-hero",
+      "description": "A calm workspace with a calendar and a laptop",
+      "imageUrl": "https://picsum.photos/seed/momentum-hero/1200/800",
+      "imageHint": "calm workspace"
+    }
+  ]
+}

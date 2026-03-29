@@ -1,0 +1,94 @@
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { AppEvent } from "@/lib/types";
+import { Navigation } from "@/components/Navigation";
+import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, Calendar as CalendarIcon, Clock, Filter } from "lucide-react";
+import { format } from "date-fns";
+import { ja } from "date-fns/locale";
+import { Badge } from "@/components/ui/badge";
+
+export default function EventsPage() {
+  const [events, setEvents] = useState<AppEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAllEvents = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const eventsRef = collection(db, "events");
+      const q = query(
+        eventsRef, 
+        where("userId", "==", user.uid), 
+        orderBy("startAt", "desc")
+      );
+
+      const snap = await getDocs(q);
+      setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
+      setLoading(false);
+    };
+
+    fetchAllEvents();
+  }, []);
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+
+  return (
+    <div className="flex flex-col min-h-screen bg-background pb-24">
+      <header className="p-6 pt-12 flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold">予定一覧</h1>
+          <p className="text-muted-foreground text-sm">カレンダーから同期されたすべての予定</p>
+        </div>
+        <Filter className="h-5 w-5 text-muted-foreground" />
+      </header>
+
+      <main className="px-6 space-y-3">
+        {events.length === 0 ? (
+          <p className="text-center text-muted-foreground pt-12">予定が見つかりません</p>
+        ) : (
+          events.map((event) => (
+            <Card key={event.id} className="border-none shadow-sm overflow-hidden">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="flex flex-col items-center justify-center bg-muted/50 rounded-xl p-2 min-w-[50px]">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase">{format(new Date(event.startAt), "MMM")}</span>
+                  <span className="text-xl font-bold text-foreground">{format(new Date(event.startAt), "d")}</span>
+                </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-sm truncate leading-none">{event.title}</h3>
+                    {event.quadrantCategory && (
+                      <div className={`w-2 h-2 rounded-full ${
+                        event.quadrantCategory.startsWith('urgent') ? 'bg-red-500' : 'bg-blue-500'
+                      }`} />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {format(new Date(event.startAt), "HH:mm")} - {format(new Date(event.endAt), "HH:mm")}
+                  </p>
+                  <p className="text-[10px] text-primary/70 font-medium truncate">{event.calendarName}</p>
+                </div>
+                {event.reportStatus && (
+                   <Badge variant="outline" className={`text-[9px] uppercase h-5 ${
+                    event.reportStatus === 'done' ? 'border-green-200 text-green-700 bg-green-50' : 
+                    event.reportStatus === 'failed' ? 'border-red-200 text-red-700 bg-red-50' : 'border-gray-200 text-gray-700 bg-gray-50'
+                   }`}>
+                    {event.reportStatus}
+                   </Badge>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </main>
+
+      <Navigation />
+    </div>
+  );
+}
