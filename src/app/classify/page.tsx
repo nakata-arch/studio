@@ -3,14 +3,14 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy, where } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
-import { format, addDays, startOfDay } from "date-fns";
+import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { format, addDays, startOfDay, isAfter, isBefore } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -32,26 +32,27 @@ export default function ClassifyPage() {
       
       const eventsRef = collection(db, "users", user.uid, "events");
       
-      // 複合クエリによるインデックスエラーを避けるため、シンプルなクエリで取得してクライアント側でフィルタリング
-      const q = query(
-        eventsRef, 
-        where("startAt", ">=", todayStart.toISOString()),
-        orderBy("startAt", "asc")
-      );
+      // インデックスエラーを避けるため、orderByのみのシンプルなクエリを使用
+      const q = query(eventsRef, orderBy("startAt", "asc"));
 
       try {
         const snap = await getDocs(q);
-        const fetched = snap.docs
-          .map(doc => ({ ...doc.data() } as AppEvent))
-          .filter(ev => 
-            !ev.quadrantCategory && // 未分類
-            new Date(ev.startAt) <= endLimit // 30日以内
-          );
-
-        console.log("Firestore 読込件数 (/classify クエリ結果):", snap.docs.length);
-        console.log("フィルタリング後の件数 (未分類かつ30日以内):", fetched.length);
+        const allEvents = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
         
-        setEvents(fetched);
+        // クライアント側で条件フィルタリング
+        const filtered = allEvents.filter(ev => {
+          const eventDate = new Date(ev.startAt);
+          const isUnclassified = !ev.quadrantCategory;
+          const isFuture = isAfter(eventDate, todayStart) || eventDate.getTime() === todayStart.getTime();
+          const isWithin30Days = isBefore(eventDate, endLimit);
+          
+          return isUnclassified && isFuture && isWithin30Days;
+        });
+
+        console.log("Firestore 取得総数:", allEvents.length);
+        console.log("分類対象 (未分類/30日以内):", filtered.length);
+        
+        setEvents(filtered);
       } catch (err: any) {
         if (err.code === 'permission-denied') {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -83,10 +84,8 @@ export default function ClassifyPage() {
 
     updateDoc(eventDoc, updateData)
       .then(() => {
-        // 現在のカードをリストから取り除く
         const nextEvents = events.filter((_, i) => i !== currentIndex);
         setEvents(nextEvents);
-        // インデックスが範囲外にならないよう調整
         if (currentIndex >= nextEvents.length && nextEvents.length > 0) {
           setCurrentIndex(nextEvents.length - 1);
         }

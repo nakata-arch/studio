@@ -3,14 +3,14 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy, where } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check, X, Ban, Loader2, MessageSquare, Clock } from "lucide-react";
-import { format, endOfDay } from "date-fns";
+import { format, endOfDay, isBefore } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -32,23 +32,26 @@ export default function ReportPage() {
       
       const eventsRef = collection(db, "users", user.uid, "events");
       
-      // クエリをシンプルにして複合インデックス要件を回避
-      const q = query(
-        eventsRef, 
-        where("startAt", "<=", todayEnd.toISOString()),
-        orderBy("startAt", "desc")
-      );
+      // シンプルなクエリで全件取得（件数が膨大でないことを前提）
+      const q = query(eventsRef, orderBy("startAt", "desc"));
 
       try {
         const snap = await getDocs(q);
-        const fetched = snap.docs
-          .map(doc => ({ ...doc.data() } as AppEvent))
-          .filter(ev => !ev.reportStatus); // 未報告のもののみ
+        const allEvents = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
         
-        console.log("Firestore 読込件数 (/report クエリ結果):", snap.docs.length);
-        console.log("フィルタリング後の件数 (未報告のみ):", fetched.length);
+        // クライアント側で条件フィルタリング
+        const filtered = allEvents.filter(ev => {
+          const eventDate = new Date(ev.startAt);
+          const isPast = isBefore(eventDate, todayEnd);
+          const isUnreported = !ev.reportStatus;
+          
+          return isPast && isUnreported;
+        });
         
-        setEvents(fetched);
+        console.log("Firestore 取得総数:", allEvents.length);
+        console.log("報告対象 (過去/未報告):", filtered.length);
+        
+        setEvents(filtered);
       } catch (err: any) {
         if (err.code === 'permission-denied') {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
