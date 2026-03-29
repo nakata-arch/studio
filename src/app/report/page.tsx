@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check, X, Ban, Loader2, MessageSquare, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { format, endOfDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -24,21 +24,30 @@ export default function ReportPage() {
   const [memo, setMemo] = useState("");
 
   useEffect(() => {
-    const fetchPastEvents = async () => {
+    const fetchReportEvents = async () => {
       if (!user) return;
 
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
+      const now = new Date();
+      const todayEnd = endOfDay(now);
+      
       const eventsRef = collection(db, "users", user.uid, "events");
+      
+      // 抽出条件: 当日を含む過去、かつ reportStatus が未設定 (isReported != true)
       const q = query(
         eventsRef, 
-        where("startAt", "<=", today.toISOString()),
+        where("startAt", "<=", todayEnd.toISOString()),
+        where("reportStatus", "==", null),
         orderBy("startAt", "desc")
       );
 
       try {
         const snap = await getDocs(q);
-        setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
+        const fetched = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
+        
+        console.log("抽出条件 (/report): 今日終了まで、かつ報告未完了");
+        console.log("Firestore 読込件数 (/report):", fetched.length);
+        
+        setEvents(fetched);
       } catch (err: any) {
         if (err.code === 'permission-denied') {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -54,7 +63,7 @@ export default function ReportPage() {
     };
 
     if (!isUserLoading && user) {
-      fetchPastEvents();
+      fetchReportEvents();
     }
   }, [user, isUserLoading, db]);
 
@@ -64,12 +73,13 @@ export default function ReportPage() {
     const updateData = {
       reportStatus: status,
       reportMemo: memo || "",
+      isReported: true,
       updatedAt: Date.now()
     };
 
     updateDoc(eventDoc, updateData)
       .then(() => {
-        setEvents(events.map(ev => ev.id === eventId ? { ...ev, reportStatus: status, reportMemo: memo } : ev));
+        setEvents(events.filter(ev => ev.id !== eventId)); // 完了したものはリストから消す
         setSelectedEventId(null);
         setMemo("");
       })
@@ -89,12 +99,15 @@ export default function ReportPage() {
     <div className="flex flex-col min-h-screen bg-background pb-24">
       <header className="p-6 pt-12">
         <h1 className="text-3xl font-bold">報告</h1>
-        <p className="text-muted-foreground text-sm">過去の予定に実績を記録しましょう</p>
+        <p className="text-muted-foreground text-sm">今日までの完了した予定を記録しましょう</p>
       </header>
 
       <main className="px-6 space-y-4">
         {events.length === 0 ? (
-          <p className="text-center text-muted-foreground pt-12">対象の予定はありません</p>
+          <div className="text-center py-20 space-y-2">
+            <p className="text-muted-foreground">報告が必要な予定はありません</p>
+            <p className="text-xs text-muted-foreground/60">すべて報告済みか、予定が入っていません</p>
+          </div>
         ) : (
           events.map((event) => (
             <Card key={event.id} className={`overflow-hidden transition-all ${selectedEventId === event.id ? 'ring-2 ring-primary border-transparent' : ''}`}>
@@ -107,14 +120,6 @@ export default function ReportPage() {
                       {format(new Date(event.startAt), "M月d日(E) HH:mm", { locale: ja })}
                     </p>
                   </div>
-                  {event.reportStatus && !selectedEventId && (
-                    <div className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      event.reportStatus === 'done' ? 'bg-green-100 text-green-700' : 
-                      event.reportStatus === 'failed' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {event.reportStatus}
-                    </div>
-                  )}
                 </div>
 
                 {selectedEventId === event.id ? (
@@ -140,7 +145,7 @@ export default function ReportPage() {
                 ) : (
                   <div className="flex justify-between items-center">
                     <p className="text-xs text-muted-foreground truncate flex-1 italic">
-                      {event.reportMemo || "メモなし"}
+                      {event.reportMemo || "実績を選択してください..."}
                     </p>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
                       setSelectedEventId(event.id);

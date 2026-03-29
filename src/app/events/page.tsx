@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,7 +7,7 @@ import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Clock, Filter } from "lucide-react";
+import { Loader2, Clock, Filter, Database } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ export default function EventsPage() {
       if (!user) return;
 
       const eventsRef = collection(db, "users", user.uid, "events");
+      // 1. users/{uid}/events を直接読み込み、startAt順にソート
       const q = query(
         eventsRef, 
         orderBy("startAt", "desc")
@@ -29,7 +31,9 @@ export default function EventsPage() {
 
       try {
         const snap = await getDocs(q);
-        setEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent)));
+        const fetched = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
+        console.log("Firestore 読込件数 (/events):", fetched.length);
+        setEvents(fetched);
       } catch (err) {
         console.error("Fetch all events failed:", err);
       } finally {
@@ -49,14 +53,22 @@ export default function EventsPage() {
       <header className="p-6 pt-12 flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold">予定一覧</h1>
-          <p className="text-muted-foreground text-sm">カレンダーから同期されたすべての予定</p>
+          <p className="text-muted-foreground text-sm">Firestoreに保存された全ての予定</p>
         </div>
-        <Filter className="h-5 w-5 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="gap-1">
+            <Database className="h-3 w-3" /> {events.length}
+          </Badge>
+          <Filter className="h-5 w-5 text-muted-foreground" />
+        </div>
       </header>
 
       <main className="px-6 space-y-3">
         {events.length === 0 ? (
-          <p className="text-center text-muted-foreground pt-12">予定が見つかりません</p>
+          <div className="text-center py-20 space-y-4">
+             <p className="text-muted-foreground">予定が見つかりません</p>
+             <p className="text-xs text-muted-foreground/60">設定画面からカレンダーを同期してください</p>
+          </div>
         ) : (
           events.map((event) => (
             <Card key={event.id} className="border-none shadow-sm overflow-hidden">
@@ -78,7 +90,7 @@ export default function EventsPage() {
                     <Clock className="h-3 w-3" />
                     {format(new Date(event.startAt), "HH:mm")} - {format(new Date(event.endAt), "HH:mm")}
                   </p>
-                  <p className="text-[10px] text-primary/70 font-medium truncate">{event.calendarName}</p>
+                  <p className="text-[10px] text-primary/70 font-medium truncate italic">{event.source === 'google_calendar' ? 'Google Calendar' : 'Manual Entry'}</p>
                 </div>
                 {event.reportStatus && (
                    <Badge variant="outline" className={`text-[9px] uppercase h-5 ${

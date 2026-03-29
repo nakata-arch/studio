@@ -2,13 +2,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth, useUser } from "@/firebase";
+import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { doc, setDoc, collection } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MOCK_QUOTES } from "@/lib/mock-data";
-import { Quote } from "@/lib/types";
+import { Quote, AppEvent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { 
   Trophy, 
@@ -21,7 +22,8 @@ import {
   Calendar as CalendarIcon,
   AlertCircle,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Database
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -31,12 +33,13 @@ import { ja } from "date-fns/locale";
 export default function SettingsPage() {
   const router = useRouter();
   const auth = useAuth();
+  const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'failed'>('idle');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
   const [fetchedEvents, setFetchedEvents] = useState<any[]>([]);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [apiEnableUrl, setApiEnableUrl] = useState<string | null>(null);
@@ -80,54 +83,91 @@ export default function SettingsPage() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
+      console.log("1. AccessToken取得可否:", !!accessToken);
+
       if (!accessToken) {
-        throw new Error("アクセストークンの取得に失敗しました。再度ログインしてください。");
+        throw new Error("アクセストークンの取得に失敗しました。");
       }
 
-      const now = new Date().toISOString();
+      // 過去30日から未来90日までの予定を取得
+      const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&maxResults=10&singleEvents=true&orderBy=startTime`,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=50&singleEvents=true&orderBy=startTime`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
 
+      console.log("2. Calendar API Status:", response.status);
       const body = await response.json();
+      console.log("3. Response Body:", body);
 
       if (!response.ok) {
         const errorMsg = body.error?.message || response.statusText;
-
-        // API未有効化エラーの検知
         if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
           const projectId = errorMsg.match(/project (\d+)/)?.[1] || "34460193112";
           setApiEnableUrl(`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=${projectId}`);
-          throw new Error("Google Calendar APIが有効化されていません。Cloud Consoleで有効にする必要があります。");
+          throw new Error("Google Calendar APIを有効化してください。");
         }
         throw new Error(`APIエラー: ${errorMsg}`);
       }
 
       const items = body.items || [];
+      console.log("4. Items Length:", items.length);
+
       const normalizedEvents = items.map((item: any) => ({
         id: item.id,
         title: item.summary || "(タイトルなし)",
         startAt: item.start?.dateTime || item.start?.date,
         endAt: item.end?.dateTime || item.end?.date,
         description: item.description || "",
+        location: item.location || "",
+        status: item.status,
       }));
 
+      console.log("5. Normalized Events Preview:", normalizedEvents.slice(0, 3));
       setFetchedEvents(normalizedEvents);
-      setSyncStatus('success');
       
+      // Firestoreへの保存
+      setSyncStatus('saving');
+      const now = Date.now();
+      
+      for (const ev of normalizedEvents) {
+        const eventRef = doc(db, "users", user.uid, "events", ev.id);
+        const eventData: AppEvent = {
+          id: ev.id,
+          userId: user.uid,
+          googleEventId: ev.id,
+          title: ev.title,
+          description: ev.description,
+          location: ev.location,
+          startAt: ev.startAt,
+          endAt: ev.endAt,
+          calendarId: "primary",
+          calendarName: "Google Calendar",
+          quadrantCategory: null,
+          reportStatus: null,
+          reportMemo: "",
+          syncStatus: 'synced',
+          source: "google_calendar",
+          isReported: false,
+          lastSyncedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        };
+        // 保存処理 (upsert)
+        await setDoc(eventRef, eventData, { merge: true });
+      }
+
+      setSyncStatus('success');
       toast({
-        title: "同期成功",
-        description: `${normalizedEvents.length}件の予定を取得しました。`,
+        title: "保存完了",
+        description: `${normalizedEvents.length}件の予定を保存しました。`,
       });
 
     } catch (error: any) {
-      // コンソールエラーを抑制し、UI状態として管理する
       setSyncError(error.message);
       setSyncStatus('failed');
-      
       toast({
         variant: "destructive",
         title: "同期失敗",
@@ -153,7 +193,7 @@ export default function SettingsPage() {
         {isOffline && (
           <div className="flex items-center gap-2 text-xs bg-yellow-100 text-yellow-800 p-2 rounded-lg mb-4">
             <CloudOff className="h-4 w-4" />
-            オフラインモードです。データは同期されません。
+            オフラインモード
           </div>
         )}
         <h1 className="text-3xl font-bold font-headline">設定</h1>
@@ -181,12 +221,12 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <Button 
                 onClick={handleSyncCalendar} 
-                disabled={syncStatus === 'syncing'}
+                disabled={syncStatus === 'syncing' || syncStatus === 'saving'}
                 variant="outline" 
                 className="h-12 gap-2 font-semibold shadow-sm"
               >
-                <RefreshCw className={syncStatus === 'syncing' ? "animate-spin h-4 w-4" : "h-4 w-4 text-primary"} />
-                同期設定
+                <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4 text-primary"} />
+                {syncStatus === 'saving' ? "保存中..." : "同期設定"}
               </Button>
               <Button 
                 onClick={handleLogout}
@@ -204,25 +244,26 @@ export default function SettingsPage() {
           <Card className="border-none shadow-md overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                {syncStatus === 'syncing' && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
+                {(syncStatus === 'syncing' || syncStatus === 'saving') && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
                 {syncStatus === 'success' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
                 {syncStatus === 'failed' && <AlertCircle className="h-4 w-4 text-destructive" />}
                 同期ステータス
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {syncStatus === 'syncing' && <p className="text-sm text-muted-foreground">Googleカレンダーから情報を取得しています...</p>}
+              {syncStatus === 'syncing' && <p className="text-sm text-muted-foreground">Googleから取得中...</p>}
+              {syncStatus === 'saving' && <p className="text-sm text-blue-600 flex items-center gap-2"><Database className="h-4 w-4 animate-pulse" />Firestoreに保存中...</p>}
               {syncStatus === 'failed' && (
                 <div className="space-y-3">
                   <div className="text-sm text-destructive bg-destructive/5 p-3 rounded-lg border border-destructive/10">
-                    <p className="font-bold">同期に失敗しました</p>
+                    <p className="font-bold">同期失敗</p>
                     <p className="text-xs opacity-80 mt-1">{syncError}</p>
                   </div>
                   {apiEnableUrl && (
                     <Button asChild variant="default" className="w-full gap-2 text-xs">
                       <a href={apiEnableUrl} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-3 w-3" />
-                        Google Cloud ConsoleでAPIを有効化する
+                        APIを有効化する
                       </a>
                     </Button>
                   )}
@@ -231,25 +272,8 @@ export default function SettingsPage() {
               {syncStatus === 'success' && (
                 <div className="space-y-4">
                   <p className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
-                    {fetchedEvents.length === 0 ? "取得可能な予定はありませんでした。" : `${fetchedEvents.length}件の予定を取得しました。`}
+                    {fetchedEvents.length}件の予定を同期しました。
                   </p>
-                  
-                  {fetchedEvents.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-bold text-muted-foreground uppercase">取得結果プレビュー（未保存）</p>
-                      <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
-                        {fetchedEvents.map((ev) => (
-                          <div key={ev.id} className="p-3 bg-muted/30 rounded-lg text-sm border border-border/50">
-                            <div className="font-semibold truncate">{ev.title}</div>
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                              <CalendarIcon className="h-3 w-3" />
-                              {format(new Date(ev.startAt), "M/d HH:mm", { locale: ja })} 〜
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>

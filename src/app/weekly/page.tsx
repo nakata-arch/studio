@@ -9,7 +9,7 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Sparkles, BarChart, Calendar } from "lucide-react";
-import { startOfWeek, endOfWeek, format } from "date-fns";
+import { startOfWeek, endOfWeek, format, isWithinInterval } from "date-fns";
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -44,6 +44,8 @@ export default function WeeklyPage() {
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
       const eventsRef = collection(db, "users", user.uid, "events");
+      
+      // 集計処理: 今週の範囲の全予定をFirestoreから取得
       const q = query(
         eventsRef, 
         where("startAt", ">=", weekStart.toISOString()),
@@ -53,6 +55,8 @@ export default function WeeklyPage() {
       try {
         const snap = await getDocs(q);
         const fetchedEvents = snap.docs.map(doc => doc.data() as AppEvent);
+        console.log("集計対象期間 (/weekly):", format(weekStart, "yyyy-MM-dd"), "to", format(weekEnd, "yyyy-MM-dd"));
+        console.log("Firestore 読込件数 (/weekly):", fetchedEvents.length);
 
         const newStats = {
           total: fetchedEvents.length,
@@ -71,17 +75,19 @@ export default function WeeklyPage() {
 
         setStats(newStats);
 
-        try {
-          const result = await aiWeeklyReportSummary({
-            targetPeriod: `${format(weekStart, "MM/dd")} - ${format(weekEnd, "MM/dd")}`,
-            eventCount: newStats.total,
-            quadrantCounts: newStats.quadrants,
-            statusCounts: newStats.status,
-            userReflection: "今週の活動を振り返ります。"
-          });
-          setAiResult(result);
-        } catch (err) {
-          console.error("AI Summary generation failed:", err);
+        if (newStats.total > 0) {
+          try {
+            const result = await aiWeeklyReportSummary({
+              targetPeriod: `${format(weekStart, "MM/dd")} - ${format(weekEnd, "MM/dd")}`,
+              eventCount: newStats.total,
+              quadrantCounts: newStats.quadrants,
+              statusCounts: newStats.status,
+              userReflection: "今週のFirestoreデータに基づいた振り返りです。"
+            });
+            setAiResult(result);
+          } catch (err) {
+            console.error("AI Summary generation failed:", err);
+          }
         }
       } catch (err: any) {
         if (err.code === 'permission-denied') {
@@ -119,7 +125,7 @@ export default function WeeklyPage() {
           <Card className="bg-primary text-primary-foreground shadow-lg border-none">
             <CardContent className="p-4 flex flex-col items-center justify-center">
               <span className="text-3xl font-bold">{stats.total}</span>
-              <span className="text-xs opacity-80">総予定数</span>
+              <span className="text-xs opacity-80">今週の予定</span>
             </CardContent>
           </Card>
           <Card className="bg-accent text-accent-foreground shadow-lg border-none">
@@ -127,7 +133,7 @@ export default function WeeklyPage() {
               <span className="text-3xl font-bold">
                 {stats.total > 0 ? Math.round((stats.status.done / stats.total) * 100) : 0}%
               </span>
-              <span className="text-xs opacity-80">達成率</span>
+              <span className="text-xs opacity-80">完了率</span>
             </CardContent>
           </Card>
         </div>
@@ -139,7 +145,9 @@ export default function WeeklyPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {aiResult ? (
+            {stats.total === 0 ? (
+               <p className="text-sm text-muted-foreground italic">今週はまだ予定がありません。</p>
+            ) : aiResult ? (
               <>
                 <p className="text-sm leading-relaxed text-indigo-900">{aiResult.summary}</p>
                 {aiResult.insight && (
@@ -151,7 +159,7 @@ export default function WeeklyPage() {
               </>
             ) : (
               <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-                <Loader2 className="h-4 w-4 animate-spin" /> 分析中...
+                <Loader2 className="h-4 w-4 animate-spin" /> Firestoreを分析中...
               </div>
             )}
           </CardContent>

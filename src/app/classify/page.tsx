@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
 import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -23,21 +23,31 @@ export default function ClassifyPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    const fetchFutureEvents = async () => {
+    const fetchClassifyEvents = async () => {
       if (!user) return;
 
-      const now = new Date().toISOString();
+      const now = new Date();
+      const endLimit = addDays(now, 30); // 30日以内
+      
       const eventsRef = collection(db, "users", user.uid, "events");
+      
+      // 抽出条件: 今日以降、かつ quadrantCategory が未設定
       const q = query(
         eventsRef, 
-        where("startAt", ">=", now),
+        where("startAt", ">=", now.toISOString()),
         where("quadrantCategory", "==", null),
         orderBy("startAt", "asc")
       );
 
       try {
         const snap = await getDocs(q);
-        const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppEvent));
+        const fetched = snap.docs
+          .map(doc => ({ ...doc.data() } as AppEvent))
+          .filter(ev => new Date(ev.startAt) <= endLimit); // 30日以内の制限をクライアントで適用
+
+        console.log("抽出条件 (/classify): 今日以降、30日以内、未分類");
+        console.log("Firestore 読込件数 (/classify):", fetched.length);
+        
         setEvents(fetched);
       } catch (err: any) {
         if (err.code === 'permission-denied') {
@@ -54,7 +64,7 @@ export default function ClassifyPage() {
     };
 
     if (!isUserLoading && user) {
-      fetchFutureEvents();
+      fetchClassifyEvents();
     }
   }, [user, isUserLoading, db]);
 
@@ -66,7 +76,6 @@ export default function ClassifyPage() {
     const updateData = {
       quadrantCategory: category,
       updatedAt: Date.now(),
-      syncStatus: 'pending'
     };
 
     updateDoc(eventDoc, updateData)
@@ -107,7 +116,9 @@ export default function ClassifyPage() {
               <Clock className="text-primary h-10 w-10" />
             </div>
             <h2 className="text-xl font-semibold">すべての分類が完了！</h2>
-            <p className="text-muted-foreground">お疲れ様です。素晴らしいスタートですね。</p>
+            <p className="text-muted-foreground text-sm px-10">
+              Firestoreのデータをすべて確認しました。素晴らしいスタートですね。
+            </p>
           </div>
         ) : (
           <>

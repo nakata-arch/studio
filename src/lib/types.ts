@@ -20,21 +20,24 @@ export interface AppUser {
 }
 
 export interface AppEvent {
-  id: string; // Firestore doc ID
+  id: string; // Firestore doc ID (matches googleEventId)
   userId: string;
   googleEventId: string;
   title: string;
   startAt: string; // ISO
   endAt: string; // ISO
   description?: string;
+  location?: string;
   calendarId: string;
   calendarName: string;
   googleColorId?: string;
-  quadrantCategory?: QuadrantCategory;
-  reportStatus?: ReportStatus;
+  quadrantCategory?: QuadrantCategory | null;
+  reportStatus?: ReportStatus | null;
   reportMemo?: string;
-  isSharedCalendar: boolean;
+  isSharedCalendar?: boolean;
   syncStatus: SyncStatus;
+  source: "google_calendar" | "app";
+  isReported: boolean;
   lastSyncedAt: number;
   createdAt: number;
   updatedAt: number;
