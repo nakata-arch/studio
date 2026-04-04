@@ -1,5 +1,6 @@
+
 /**
- * MomentumFlow Firestore Security Rules
+ * DAYS Firestore Security Rules
  * 
  * Core Philosophy:
  * This ruleset enforces a strict user-ownership model for all personal data (profiles, events, 
@@ -12,23 +13,6 @@
  * - /users/{userId}/events/{eventId}: Private calendar events owned by the user.
  * - /users/{userId}/summaries/{summaryId}: Private activity summaries owned by the user.
  * - /quotes/{quoteId}: Publicly accessible motivational quotes.
- * 
- * Key Security Decisions:
- * 1. Authorization Independence: The 'userId' is denormalized into document paths. All 
- *    security checks for user data compare 'request.auth.uid' directly against the '{userId}' 
- *    path parameter.
- * 2. Strict Privacy: Users cannot list or read profiles, events, or summaries belonging 
- *    to other users.
- * 3. Prototyping Flexibility: Rules enforce strict authorization (who can access) but 
- *    remain flexible on data shapes (schema) to support rapid development.
- * 4. Read-Only Public Data: The 'quotes' collection is open for reading by any user 
- *    (including unauthenticated) but remains immutable via the API to prevent unauthorized 
- *    modifications.
- * 
- * Denormalization for Authorization:
- * Relational integrity is enforced by ensuring the 'userId' or 'id' fields within 
- * documents match the secure path parameters during creation and remain immutable 
- * during updates.
  */
 
 rules_version = '2';
@@ -54,13 +38,6 @@ service cloud.firestore {
 
     // --- Collection Rules ---
 
-    /**
-     * @description Rules for individual user profile documents.
-     * @path /users/{userId}
-     * @allow (get) If auth.uid == userId. (create) If auth.uid == userId and data.id matches.
-     * @deny (list) All users (prevents user enumeration).
-     * @principle Enforces self-ownership and prevents listing of the user directory.
-     */
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
@@ -68,13 +45,6 @@ service cloud.firestore {
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isExistingOwner(userId);
 
-      /**
-       * @description Rules for user-owned events imported or created in-app.
-       * @path /users/{userId}/events/{eventId}
-       * @allow (list) If auth.uid == userId. (create) If auth.uid == userId and data.userId matches.
-       * @deny (get) If auth.uid != userId.
-       * @principle Path-based ownership ensures users only see their own event data.
-       */
       match /events/{eventId} {
         allow get, list: if isOwner(userId);
         allow create: if isOwner(userId) && request.resource.data.userId == userId;
@@ -82,13 +52,6 @@ service cloud.firestore {
         allow delete: if isExistingOwner(userId);
       }
 
-      /**
-       * @description Rules for user activity summaries (weekly/monthly/yearly).
-       * @path /users/{userId}/summaries/{summaryId}
-       * @allow (get) If auth.uid == userId. (update) If auth.uid == userId.
-       * @deny (list) If auth.uid != userId.
-       * @principle Uses hierarchical paths to scope access to the owner only.
-       */
       match /summaries/{summaryId} {
         allow get, list: if isOwner(userId);
         allow create: if isOwner(userId) && request.resource.data.userId == userId;
@@ -97,18 +60,11 @@ service cloud.firestore {
       }
     }
 
-    /**
-     * @description Rules for motivational quotes available to all users.
-     * @path /quotes/{quoteId}
-     * @allow (get, list) All users, including anonymous/unauthenticated.
-     * @deny (create, update, delete) All users via the public API.
-     * @principle Structural segregation of public content from private user data.
-     */
     match /quotes/{quoteId} {
       allow get, list: if true;
-      
-      // CRITICAL: Cannot implement owner-only writes. The 'Quote' entity is missing an 'ownerId' or 'authorId' field.
-      allow create, update, delete: if false; // TODO: Add owner or admin validation once the schema includes an ownership field.
+      allow create, update, delete: if false;
     }
   }
 }
+
+    

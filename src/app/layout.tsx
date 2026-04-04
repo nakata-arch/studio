@@ -1,10 +1,11 @@
+
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
-  title: 'MomentumFlow | Time Management Coach',
+  title: 'DAYS | Time Management Coach',
   description: 'AI-powered time management coaching for peak productivity.',
 };
 
@@ -29,3 +30,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+    

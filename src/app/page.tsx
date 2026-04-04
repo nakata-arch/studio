@@ -60,7 +60,7 @@ export default function LandingPage() {
               本当に大切なことに、<br />時間を使えていますか
             </h1>
             <p className="text-sm text-muted-foreground leading-relaxed px-4">
-              MomentumFlowは、予定を振り返り、<br />
+              DAYSは、予定を振り返り、<br />
               時間の使い方を優しく整えるための場所です。
             </p>
           </div>
@@ -197,9 +197,11 @@ export default function LandingPage() {
 
       <footer className="py-12 text-center border-t border-primary/5">
         <p className="text-[10px] text-muted-foreground opacity-40 uppercase tracking-widest">
-          © 2024 MomentumFlow
+          © 2024 DAYS
         </p>
       </footer>
     </div>
   );
 }
+
+    

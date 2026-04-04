@@ -1,10 +1,11 @@
+
 {
   "entities": {
     "User": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user of the MomentumFlow application, storing their profile information and app-specific settings.",
+      "description": "Represents a user of the DAYS application, storing their profile information and app-specific settings.",
       "properties": {
         "id": {
           "type": "string",
@@ -351,3 +352,5 @@
     "reasoning": "The Firestore data structure is designed to be secure, scalable, and debuggable, adhering to the core design principles and strategy mandates. \n\n**Authorization Independence via Denormalization:**\n\n*   For user-specific collections like `/users/{userId}/events` and `/users/{userId}/summaries`, the `userId` is embedded directly into the document path (e.g., `{userId}`). This makes the owner's `uid` directly accessible as a path parameter in Firestore Security Rules (`match /users/{userId}/events/{eventId}`). This eliminates the need for expensive and complex `get()` calls to a parent document to determine ownership or permissions, ensuring atomic operations and simplifying rule logic. The `userId` field within the 'Event' and 'Summary' documents also acts as a denormalized reference, further reinforcing ownership and enabling direct queries or data integrity checks, even though the path parameter is sufficient for authorization rules.\n\n*   The `Quote` collection (`/quotes/{quoteId}`) is globally accessible and read-only. This segregation removes any authorization dependencies and simplifies its security posture to a simple 'allow read: true;'.\n\n**Clarity of Intent and Debuggability:**\n\n*   The hierarchical path structure (`/users/{userId}/events/{eventId}`, `/users/{userId}/summaries/{summaryId}`) explicitly defines ownership, making it clear that 'events' and 'summaries' belong to a specific user. This direct mapping simplifies security rule writing, as rules only need to compare `request.auth.uid` with the `{userId}` in the path.\n\n*   The use of descriptive wildcards (e.g., `{userId}`, `{eventId}`, `{summaryId}`, `{quoteId}`) enhances readability and makes the intent of each path segment clear.\n\n**QAPs (Rules are not Filters):**\n\n*   **User-Specific Data (`/users/{userId}/events`, `/users/{userId}/summaries`):** By nesting 'events' and 'summaries' under a user's document, `list` queries on these subcollections are inherently constrained to the specific `{userId}` in the path. Security rules can then simply `allow list: request.auth.uid == userId;`. This ensures that any `list` operation automatically returns only the documents owned by the authenticated user, thus preventing rules from acting as filters over a broader, unauthorized dataset.\n\n*   **Public Data (`/quotes/{quoteId}`):** The `quotes` collection is designed for public read access. A simple rule like `allow read: true;` will permit efficient `list` operations without any filtering by the rules themselves, as all data in this collection is intended to be public.\n\n**DBAC and Invariants:**\n\n*   All user-specific roles and authorization are handled via `request.auth.uid` against the `userId` in the path, adhering to the DBAC principle (no custom claims needed for this MVP). No complex global roles are required at this stage.\n\n*   Fields like `createdAt`, `updatedAt`, `ownerId` (implicitly `userId` in path and document field), `isConsistentUser`, `consistencyStartDate`, `syncStatus`, `reportStatus`, and `quadrantCategory` are explicitly defined within the schemas, supporting data integrity and predictable state management."
   }
 }
+
+    
