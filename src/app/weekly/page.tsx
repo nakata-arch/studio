@@ -1,13 +1,14 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Sparkles, Heart } from "lucide-react";
-import { startOfWeek, endOfWeek, format } from "date-fns";
+import { startOfWeek, endOfWeek, format, isWithinInterval } from "date-fns";
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
 
@@ -21,14 +22,23 @@ export default function WeeklyPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      const start = startOfWeek(new Date(), { weekStartsOn: 1 });
-      const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+      const now = new Date();
+      const start = startOfWeek(now, { weekStartsOn: 1 });
+      const end = endOfWeek(now, { weekStartsOn: 1 });
+      
       const eventsRef = collection(db, "users", user.uid, "events");
-      const q = query(eventsRef, where("startAt", ">=", start.toISOString()), where("startAt", "<=", end.toISOString()));
+      const q = query(eventsRef, orderBy("startAt", "desc"));
 
       try {
         const snap = await getDocs(q);
-        const events = snap.docs.map(d => d.data() as AppEvent);
+        const allEvents = snap.docs.map(d => d.data() as AppEvent);
+        
+        // 今週のイベントのみフィルタリング
+        const events = allEvents.filter(e => {
+          const date = new Date(e.startAt);
+          return isWithinInterval(date, { start, end });
+        });
+
         const done = events.filter(e => e.reportStatus === 'done').length;
         setStats({ total: events.length, done });
 
@@ -49,6 +59,8 @@ export default function WeeklyPage() {
             }
           });
           setAiResult(result);
+        } else {
+          setAiResult({ summary: "今週はまだ予定がありません。ゆっくりと準備を始めましょう。" });
         }
       } catch (err) {
         console.error(err);
@@ -63,10 +75,10 @@ export default function WeeklyPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-8 pt-16">
+      <header className="p-8 pt-16 space-y-1">
         <h1 className="text-3xl font-bold font-headline">日記</h1>
-        <p className="text-muted-foreground text-sm">
-          {format(startOfWeek(new Date(), { weekStartsOn: 1 }), "M月d日")} 〜 今日の歩み
+        <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest opacity-60">
+          {format(startOfWeek(new Date(), { weekStartsOn: 1 }), "M月d日")} 〜 {format(new Date(), "M月d日")}
         </p>
       </header>
 
@@ -74,13 +86,13 @@ export default function WeeklyPage() {
         <div className="grid grid-cols-2 gap-4">
           <Card className="border-none shadow-sm bg-white rounded-3xl">
             <CardContent className="p-6 flex flex-col items-center">
-              <span className="text-3xl font-bold text-primary/80">{stats.total}</span>
+              <span className="text-3xl font-bold text-primary/80 tracking-tighter">{stats.total}</span>
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">過ごした時間</span>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white rounded-3xl">
             <CardContent className="p-6 flex flex-col items-center">
-              <span className="text-3xl font-bold text-primary/80">{stats.done}</span>
+              <span className="text-3xl font-bold text-primary/80 tracking-tighter">{stats.done}</span>
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">実を結んだこと</span>
             </CardContent>
           </Card>
@@ -88,7 +100,7 @@ export default function WeeklyPage() {
 
         <Card className="border-none shadow-xl bg-white rounded-[2rem] overflow-hidden">
           <CardContent className="p-10 space-y-8">
-            <div className="flex items-center gap-3 text-primary/40">
+            <div className="flex items-center gap-3 text-primary/30">
               <Sparkles className="h-4 w-4" />
               <span className="text-[10px] font-bold uppercase tracking-widest">今週のあなたへ</span>
             </div>
@@ -98,12 +110,12 @@ export default function WeeklyPage() {
                   {aiResult.summary}
                 </p>
                 {aiResult.insight && (
-                  <div className="p-6 bg-primary/5 rounded-[1.5rem] space-y-3">
+                  <div className="p-6 bg-primary/5 rounded-[1.5rem] space-y-3 border border-primary/5">
                     <div className="flex items-center gap-2 text-primary/60">
                       <Heart className="h-3.5 w-3.5" />
                       <span className="text-[10px] font-bold uppercase tracking-wider">ひとさじの助言</span>
                     </div>
-                    <p className="text-sm text-foreground/60 leading-relaxed italic">
+                    <p className="text-xs text-foreground/60 leading-relaxed italic">
                       {aiResult.insight}
                     </p>
                   </div>

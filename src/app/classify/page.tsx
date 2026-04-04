@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { QuotePopup } from "@/components/QuotePopup";
 
 export default function ClassifyPage() {
   const db = useFirestore();
@@ -64,36 +65,37 @@ export default function ClassifyPage() {
   const current = events[currentIndex];
 
   return (
-    <div className="flex flex-col min-h-screen bg-background pb-32">
-      <main className="flex-1 px-8 flex flex-col items-center pt-20">
+    <div className="flex flex-col min-h-screen bg-background pb-40">
+      <QuotePopup />
+      
+      <header className="p-8 pt-16">
+        <h1 className="text-3xl font-bold font-headline">分類</h1>
+      </header>
+
+      <main className="flex-1 px-8 flex flex-col items-center pt-4">
         {events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 opacity-60">
+          <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 opacity-60">
             <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
               <CalendarIcon className="text-primary/40 h-8 w-8" />
             </div>
             <p className="text-sm">すべて整いました</p>
           </div>
         ) : (
-          <div className="w-full max-w-sm space-y-6">
+          <div className="w-full max-w-sm space-y-4">
             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.2em] text-center">
               {currentIndex + 1} / {events.length}
             </div>
             <Card className="w-full border-none shadow-xl bg-white relative overflow-hidden rounded-[2.5rem]">
                <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10" />
-               <CardContent className="p-8 space-y-6">
+               <CardContent className="p-8 space-y-4">
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-primary opacity-40 uppercase tracking-widest block">{current.calendarName}</span>
-                  <h2 className="text-xl font-headline leading-relaxed text-foreground/80 break-words">{current.title}</h2>
+                  <span className="text-[10px] font-bold text-primary opacity-40 uppercase tracking-widest block truncate">{current.calendarName}</span>
+                  <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-3">{current.title}</h2>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground opacity-60">
-                  <Clock className="h-3.5 w-3.5" />
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
                   {format(new Date(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
                 </div>
-                {current.description && (
-                  <p className="text-xs text-muted-foreground/60 leading-relaxed italic border-t border-primary/5 pt-4 break-words line-clamp-4">
-                    {current.description}
-                  </p>
-                )}
               </CardContent>
             </Card>
           </div>
@@ -107,10 +109,10 @@ export default function ClassifyPage() {
                <Button
                 key={key}
                 onClick={() => handleClassify(key)}
-                className={`${config.color} ${config.hover} h-20 rounded-2xl flex flex-col gap-1 items-center justify-center border-none transition-all active:scale-95 shadow-sm`}
+                className={`${config.color} ${config.hover} h-16 rounded-2xl flex flex-col gap-1 items-center justify-center border-none transition-all active:scale-95 shadow-sm`}
                >
-                 <span className="text-xl">{config.icon}</span>
-                 <span className="text-[10px] font-bold tracking-tight opacity-90">{config.label}</span>
+                 <span className="text-lg">{config.icon}</span>
+                 <span className="text-[9px] font-bold tracking-tight opacity-90">{config.label}</span>
                </Button>
              ))}
            </div>
