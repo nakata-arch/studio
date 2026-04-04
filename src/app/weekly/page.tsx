@@ -454,7 +454,7 @@ export default function DiaryPage() {
               <Card className="border-none shadow-sm bg-white rounded-[2rem]">
                 <CardContent className="p-6 flex flex-col items-center">
                   <span className="text-3xl font-bold text-primary/80 tracking-tighter">
-                    {periodEvents.filter(e => e.reportStatus === 'done').length}
+                    {stats.done}
                   </span>
                   <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">実を結んだこと</span>
                 </CardContent>
@@ -467,7 +467,7 @@ export default function DiaryPage() {
                 <div className="flex items-center gap-3 text-primary/30">
                   <Sparkles className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-widest">
-                    この期間のあなたへ
+                    振り返りをしているあなたへ
                   </span>
                 </div>
 
