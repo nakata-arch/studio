@@ -45,40 +45,41 @@ const aiWeeklyReportSummaryPrompt = ai.definePrompt({
   name: 'aiWeeklyReportSummaryPrompt',
   input: { schema: AiWeeklyReportSummaryInputSchema },
   output: { schema: AiWeeklyReportSummaryOutputSchema },
-  prompt: `あなたは穏やかで思慮深いタイムマネジメント・コーチです。
-ユーザーの活動データ（期間: {{{targetPeriod}}}）に基づき、優しく語りかけるような振り返りを生成してください。
+  prompt: `あなたは優しいコーチです。
 
-データ:
-- 総予定数: {{{eventCount}}}
-- 4象限の分布:
-  - 緊急かつ重要: {{{quadrantCounts.urgent_important}}}
-  - 緊急ではないが重要: {{{quadrantCounts.not_urgent_important}}}
-  - 緊急だが重要ではない: {{{quadrantCounts.urgent_not_important}}}
-  - 緊急でも重要でもない: {{{quadrantCounts.not_urgent_not_important}}}
-- 完了状態:
-  - できた: {{{statusCounts.done}}}
-  - 未達: {{{statusCounts.failed}}}
-  - 中止: {{{statusCounts.cancelled}}}
+以下はユーザーの{{{targetPeriod}}}（{{{periodType}}}）の記録です。
 
+予定数: {{{eventCount}}}
+できた: {{{statusCounts.done}}}
+できなかった: {{{statusCounts.failed}}}
+キャンセル: {{{statusCounts.cancelled}}}
+
+4象限:
+重要かつ緊急: {{{quadrantCounts.urgent_important}}}
+重要だが緊急ではない: {{{quadrantCounts.not_urgent_important}}}
+緊急だが重要ではない: {{{quadrantCounts.urgent_not_important}}}
+重要でも緊急でもない: {{{quadrantCounts.not_urgent_not_important}}}
+
+日記:
 {{#if userReflection}}
-ユーザーのメモ: "{{{userReflection}}}"
+{{{userReflection}}}
+{{else}}
+なし
 {{/if}}
 
-指針:
-1. 行動傾向の要約 (trendSummary):
-   - データの偏りから見える行動のパターンを、客観的かつ柔らかく伝えてください。
-   - 「忙しさに追われていた」「自分の時間を大切にできていた」など、状況を鏡のように映し出します。
+この情報から以下を生成してください。
+- 行動傾向の要約（1〜2文）
+- やさしい振り返り
+- 最後に問いかけ
 
-2. やさしい振り返りコメント (reflection):
-   - ユーザーの努力を肯定し、できたことに目を向けます。
-   - できなかったことに対しても「無理があったのかもしれない」と優しく寄り添います。
-   - 「〜かもしれません」「〜のようです」という表現を使い、断定を避けてください。
-
-3. 問いかけ (question):
-   - ユーザーが次への一歩を自ら考えるきっかけになる短い問いを1つ添えてください。
+禁止:
+- 強い否定
+- 指導的すぎる表現
 
 出力はJSON形式で、trendSummary, reflection, question の3つのフィールドに格納してください。`,
 });
+
+const aiWeeklyReportSummaryPromptWithSafety = aiWeeklyReportSummaryPrompt;
 
 const aiWeeklyReportSummaryFlow = ai.defineFlow(
   {
@@ -87,7 +88,7 @@ const aiWeeklyReportSummaryFlow = ai.defineFlow(
     outputSchema: AiWeeklyReportSummaryOutputSchema,
   },
   async (input) => {
-    const { output } = await aiWeeklyReportSummaryPrompt(input);
+    const { output } = await aiWeeklyReportSummaryPromptWithSafety(input);
     if (!output) {
       throw new Error('Failed to generate report summary.');
     }
