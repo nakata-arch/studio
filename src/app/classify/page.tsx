@@ -5,11 +5,11 @@ import { useFirestore, useUser } from "@/firebase";
 import { collection, query, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
-import { format, isBefore, startOfDay } from "date-fns";
+import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -22,124 +22,80 @@ export default function ClassifyPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    const fetchClassifyEvents = async () => {
+    const fetchEvents = async () => {
       if (!user) return;
-
       const eventsRef = collection(db, "users", user.uid, "events");
-      
-      // インデックスエラーを避けるため、orderByのみのシンプルなクエリを使用
       const q = query(eventsRef, orderBy("startAt", "asc"));
 
       try {
         const snap = await getDocs(q);
-        const allEvents = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
-        
-        // クライアント側で条件フィルタリング
-        // 「優先度（quadrantCategory）が未設定」のものを過去・未来問わずすべて抽出
-        const filtered = allEvents.filter(ev => !ev.quadrantCategory);
-
-        console.log("Firestore 取得総数:", allEvents.length);
-        console.log("未分類予定数:", filtered.length);
-        
+        const filtered = snap.docs
+          .map(d => d.data() as AppEvent)
+          .filter(ev => !ev.quadrantCategory);
         setEvents(filtered);
       } catch (err: any) {
-        if (err.code === 'permission-denied') {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: eventsRef.path,
-            operation: 'list',
-          }));
-        } else {
-          console.error("Fetch events failed:", err);
-        }
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
       } finally {
         setLoading(false);
       }
     };
-
-    if (!isUserLoading && user) {
-      fetchClassifyEvents();
-    }
+    if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
   const handleClassify = async (category: QuadrantCategory) => {
     if (!events[currentIndex] || !user) return;
     const event = events[currentIndex];
-    
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
-    const updateData = {
-      quadrantCategory: category,
-      updatedAt: Date.now(),
-    };
-
-    updateDoc(eventDoc, updateData)
+    
+    updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .then(() => {
-        const nextEvents = events.filter((_, i) => i !== currentIndex);
-        setEvents(nextEvents);
-        // インデックスが範囲外にならないよう調整
-        if (currentIndex >= nextEvents.length && nextEvents.length > 0) {
-          setCurrentIndex(nextEvents.length - 1);
-        }
+        const next = events.filter((_, i) => i !== currentIndex);
+        setEvents(next);
+        if (currentIndex >= next.length && next.length > 0) setCurrentIndex(next.length - 1);
       })
-      .catch(async (err) => {
-        const permissionError = new FirestorePermissionError({
-          path: eventDoc.path,
-          operation: 'update',
-          requestResourceData: updateData,
-        });
-        errorEmitter.emit('permission-error', permissionError);
+      .catch(err => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
       });
   };
 
-  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin opacity-20" /></div>;
 
-  const currentEvent = events[currentIndex];
-  const isPastEvent = currentEvent && isBefore(new Date(currentEvent.startAt), startOfDay(new Date()));
+  const current = events[currentIndex];
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-6 pt-12">
+      <header className="p-8 pt-16">
         <h1 className="text-3xl font-bold font-headline">分類</h1>
-        <p className="text-muted-foreground text-sm">優先度が未設定の予定を4象限に分けましょう</p>
+        <p className="text-muted-foreground text-sm">今のあなたにとって、どんな意味がありますか？</p>
       </header>
 
-      <main className="flex-1 px-6 flex flex-col items-center justify-center gap-8">
+      <main className="flex-1 px-8 flex flex-col items-center justify-center gap-12">
         {events.length === 0 ? (
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-              <CalendarIcon className="text-primary h-10 w-10" />
+          <div className="text-center space-y-6 opacity-60">
+            <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto border border-primary/10">
+              <CalendarIcon className="text-primary/40 h-8 w-8" />
             </div>
-            <h2 className="text-xl font-semibold">すべての分類が完了！</h2>
-            <p className="text-muted-foreground text-sm px-10">
-              現在、分類が必要な未設定の予定はありません。
-            </p>
+            <p className="text-sm">すべての予定が整いました。</p>
           </div>
         ) : (
           <>
-            <div className="w-full flex justify-between items-center text-xs text-muted-foreground mb-[-20px]">
+            <div className="w-full flex justify-between items-center text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-[-20px]">
               <span>{currentIndex + 1} / {events.length}件</span>
-              {isPastEvent && (
-                <span className="flex items-center gap-1 text-orange-600 font-bold">
-                  <AlertCircle className="h-3 w-3" /> 過去の予定
-                </span>
-              )}
             </div>
-            <Card className="w-full shadow-lg border-none bg-card/80 backdrop-blur-sm relative overflow-hidden">
-               <div className={`absolute top-0 left-0 w-1 h-full ${isPastEvent ? 'bg-orange-400' : 'bg-primary'}`} />
-               <CardHeader>
-                <div className="flex items-center gap-2 text-xs font-semibold text-primary mb-1">
-                  <CalendarIcon className="h-3 w-3" />
-                  {currentEvent.calendarName}
+            <Card className="w-full border-none shadow-xl bg-white relative overflow-hidden">
+               <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
+               <CardContent className="p-8 space-y-6">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-primary opacity-50 uppercase tracking-wider">{current.calendarName}</span>
+                  <h2 className="text-2xl font-headline leading-snug text-foreground/80">{current.title}</h2>
                 </div>
-                <CardTitle className="text-2xl font-headline leading-tight">{currentEvent.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  {format(new Date(currentEvent.startAt), "M月d日(E) HH:mm", { locale: ja })}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60">
+                  <Clock className="h-3.5 w-3.5" />
+                  {format(new Date(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
                 </div>
-                {currentEvent.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-3 bg-muted/50 p-3 rounded-lg border border-border/50">
-                    {currentEvent.description}
+                {current.description && (
+                  <p className="text-sm text-muted-foreground/70 leading-relaxed italic border-t border-primary/5 pt-4">
+                    {current.description}
                   </p>
                 )}
               </CardContent>
@@ -148,17 +104,17 @@ export default function ClassifyPage() {
         )}
       </main>
 
-      {currentEvent && (
-        <div className="fixed bottom-24 left-0 right-0 px-6 max-w-md mx-auto z-40">
+      {current && (
+        <div className="fixed bottom-24 left-0 right-0 px-8 max-w-md mx-auto z-40">
            <div className="grid grid-cols-2 gap-3">
              {(Object.entries(QUADRANTS) as [QuadrantCategory, typeof QUADRANTS.urgent_important][]).map(([key, config]) => (
                <Button
                 key={key}
                 onClick={() => handleClassify(key)}
-                className={`${config.color} ${config.hover} h-20 text-white flex flex-col gap-1 items-center justify-center shadow-lg active:scale-95 transition-transform`}
+                className={`${config.color} ${config.hover} h-20 rounded-2xl flex flex-col gap-1 items-center justify-center border-none transition-all active:scale-95`}
                >
-                 <span className="text-xl">{config.icon}</span>
-                 <span className="text-[10px] font-bold tracking-tighter leading-none">{config.label}</span>
+                 <span className="text-xl opacity-80">{config.icon}</span>
+                 <span className="text-[9px] font-bold tracking-tighter leading-none opacity-80">{config.label}</span>
                </Button>
              ))}
            </div>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -18,8 +17,8 @@ export function Navigation() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border z-50 safe-area-bottom">
-      <div className="flex justify-around items-center h-16 max-w-md mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 glass border-t border-primary/5 z-50 safe-area-bottom">
+      <div className="flex justify-around items-center h-20 max-w-md mx-auto px-4">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -28,12 +27,17 @@ export function Navigation() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center justify-center w-full h-full transition-colors",
-                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                "flex flex-col items-center justify-center w-full h-full transition-all duration-300",
+                isActive ? "text-primary translate-y-[-2px]" : "text-muted-foreground opacity-50 hover:opacity-100"
               )}
             >
-              <Icon className={cn("h-6 w-6 mb-1", isActive && "stroke-[2.5px]")} />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <div className={cn(
+                "p-2 rounded-2xl transition-all",
+                isActive && "bg-primary/10"
+              )}>
+                <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
+              </div>
+              <span className={cn("text-[9px] font-bold tracking-tight mt-1", !isActive && "opacity-0 scale-90")}>{item.label}</span>
             </Link>
           );
         })}

@@ -1,28 +1,23 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { doc, setDoc, collection, query, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MOCK_QUOTES, QUADRANTS } from "@/lib/mock-data";
+import { Card, CardContent } from "@/components/ui/card";
+import { MOCK_QUOTES } from "@/lib/mock-data";
 import { Quote, AppEvent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { 
-  Trophy, 
-  CloudOff, 
   LogOut, 
   RefreshCw,
   User as UserIcon,
-  Mail,
   Sparkles,
-  AlertCircle,
-  CheckCircle2,
   ExternalLink,
-  Database
+  ClipboardCheck,
+  ListTodo
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -35,91 +30,59 @@ export default function SettingsPage() {
   const { toast } = useToast();
   
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
-  const [fetchedEvents, setFetchedEvents] = useState<any[]>([]);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [apiEnableUrl, setApiEnableUrl] = useState<string | null>(null);
+  const [counts, setCounts] = useState({ report: 0, classify: 0 });
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
-      router.push("/");
-    }
+    if (!isUserLoading && !user) router.push("/");
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    const handleOnlineStatus = () => setIsOffline(!navigator.onLine);
-    window.addEventListener('online', handleOnlineStatus);
-    window.addEventListener('offline', handleOnlineStatus);
-    setIsOffline(!navigator.onLine);
-
     const timing = new Date().getHours() < 12 ? 'morning' : new Date().getHours() > 18 ? 'evening' : 'any';
-    const filteredQuotes = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
-    setQuote(filteredQuotes[Math.floor(Math.random() * filteredQuotes.length)]);
+    const filtered = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
+    setQuote(filtered[Math.floor(Math.random() * filtered.length)]);
 
-    return () => {
-      window.removeEventListener('online', handleOnlineStatus);
-      window.removeEventListener('offline', handleOnlineStatus);
+    const fetchCounts = async () => {
+      if (!user) return;
+      const eventsRef = collection(db, "users", user.uid, "events");
+      const snap = await getDocs(eventsRef);
+      const all = snap.docs.map(d => d.data() as AppEvent);
+      
+      setCounts({
+        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
+        classify: all.filter(e => !e.quadrantCategory).length
+      });
     };
-  }, []);
+    if (user) fetchCounts();
+  }, [user, db]);
 
-  const handleSyncCalendar = async () => {
+  const handleSync = async () => {
     if (!user) return;
     setSyncStatus('syncing');
-    setSyncError(null);
-    setApiEnableUrl(null);
-    setFetchedEvents([]);
-
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    provider.addScope('https://www.googleapis.com/auth/calendar.events');
 
     try {
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      if (!accessToken) {
-        throw new Error("アクセストークンの取得に失敗しました。");
-      }
+      if (!accessToken) throw new Error("認証に失敗しました。");
 
-      // 過去30日から未来90日までの予定を取得
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=100&singleEvents=true&orderBy=startTime`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       );
 
       const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || "同期に失敗しました。");
 
-      if (!response.ok) {
-        const errorMsg = body.error?.message || response.statusText;
-        if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
-          const projectId = errorMsg.match(/project (\d+)/)?.[1] || "34460193112";
-          setApiEnableUrl(`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=${projectId}`);
-          throw new Error("Google Calendar APIを有効化してください。");
-        }
-        throw new Error(`APIエラー: ${errorMsg}`);
-      }
-
-      const items = body.items || [];
-      const normalizedEvents = items.map((item: any) => ({
-        id: item.id,
-        title: item.summary || "(タイトルなし)",
-        startAt: item.start?.dateTime || item.start?.date,
-        endAt: item.end?.dateTime || item.end?.date,
-        description: item.description || "",
-      }));
-
-      setFetchedEvents(normalizedEvents);
       setSyncStatus('saving');
-      
       const now = Date.now();
-      for (const ev of items) {
+      for (const ev of (body.items || [])) {
         const eventRef = doc(db, "users", user.uid, "events", ev.id);
-        const eventData: AppEvent = {
+        await setDoc(eventRef, {
           id: ev.id,
           userId: user.uid,
           googleEventId: ev.id,
@@ -127,48 +90,22 @@ export default function SettingsPage() {
           description: ev.description || "",
           startAt: ev.start?.dateTime || ev.start?.date,
           endAt: ev.end?.dateTime || ev.end?.date,
-          calendarId: "primary",
           calendarName: "Google Calendar",
           quadrantCategory: null,
           reportStatus: null,
-          reportMemo: "",
           syncStatus: 'synced',
-          source: "google_calendar",
           isReported: false,
           lastSyncedAt: now,
-          createdAt: now,
           updatedAt: now,
-        };
-        await setDoc(eventRef, eventData, { merge: true });
+        }, { merge: true });
       }
 
       setSyncStatus('success');
-      toast({
-        title: "保存完了",
-        description: `${items.length}件の予定を同期・保存しました。`,
-      });
-
-    } catch (error: any) {
-      if (error.code === 'auth/popup-closed-by-user') {
-        setSyncStatus('idle');
-        return;
-      }
-      setSyncError(error.message);
+      toast({ title: "整いました", description: "カレンダーの情報を更新しました。" });
+      router.refresh();
+    } catch (err: any) {
       setSyncStatus('failed');
-      toast({
-        variant: "destructive",
-        title: "同期失敗",
-        description: error.message,
-      });
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await auth.signOut();
-      router.push("/");
-    } catch (error) {
-      console.error("Logout failed:", error);
+      toast({ variant: "destructive", title: "お困りですか？", description: err.message });
     }
   };
 
@@ -176,114 +113,76 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-6 pt-12 flex flex-col gap-2">
-        {isOffline && (
-          <div className="flex items-center gap-2 text-xs bg-yellow-100 text-yellow-800 p-2 rounded-lg mb-4">
-            <CloudOff className="h-4 w-4" />
-            オフラインモード
-          </div>
-        )}
-        <h1 className="text-3xl font-bold font-headline">設定</h1>
+      <header className="p-8 pt-16">
+        <h1 className="text-3xl font-bold font-headline tracking-tight">設定</h1>
       </header>
 
-      <main className="px-6 space-y-6">
-        <Card className="border-none shadow-lg bg-card overflow-hidden">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4 mb-6">
-              <Avatar className="h-16 w-16 border-2 border-primary/20">
-                <AvatarImage src={user.photoURL || ""} />
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  <UserIcon className="h-8 w-8" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-bold truncate">{user.displayName || "User"}</h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Mail className="h-3 w-3" />
-                  {user.email}
-                </p>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <Button 
-                onClick={handleSyncCalendar} 
-                disabled={syncStatus === 'syncing' || syncStatus === 'saving'}
-                variant="outline" 
-                className="h-12 gap-2 font-semibold shadow-sm"
-              >
-                <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4 text-primary"} />
-                {syncStatus === 'saving' ? "保存中..." : "同期設定"}
-              </Button>
-              <Button 
-                onClick={handleLogout}
-                variant="outline" 
-                className="h-12 gap-2 font-semibold text-destructive hover:text-destructive shadow-sm"
-              >
-                <LogOut className="h-4 w-4" />
-                ログアウト
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <main className="px-6 space-y-8">
+        <div className="flex items-center gap-4 px-2">
+          <Avatar className="h-14 w-14 ring-4 ring-white shadow-sm">
+            <AvatarImage src={user.photoURL || ""} />
+            <AvatarFallback><UserIcon /></AvatarFallback>
+          </Avatar>
+          <div className="space-y-0.5">
+            <h3 className="text-lg font-bold">{user.displayName}</h3>
+            <p className="text-xs text-muted-foreground opacity-70">{user.email}</p>
+          </div>
+        </div>
 
-        {syncStatus !== 'idle' && (
-          <Card className="border-none shadow-md overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                {(syncStatus === 'syncing' || syncStatus === 'saving') && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
-                {syncStatus === 'success' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-                {syncStatus === 'failed' && <AlertCircle className="h-4 w-4 text-destructive" />}
-                同期ステータス
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {syncStatus === 'syncing' && <p className="text-sm text-muted-foreground">Googleから取得中...</p>}
-              {syncStatus === 'saving' && <p className="text-sm text-blue-600 flex items-center gap-2"><Database className="h-4 w-4 animate-pulse" />Firestoreに保存中...</p>}
-              {syncStatus === 'failed' && (
-                <div className="space-y-3">
-                  <div className="text-sm text-destructive bg-destructive/5 p-3 rounded-lg border border-destructive/10">
-                    <p className="font-bold">同期失敗</p>
-                    <p className="text-xs opacity-80 mt-1">{syncError}</p>
-                  </div>
-                  {apiEnableUrl && (
-                    <Button asChild variant="default" className="w-full gap-2 text-xs">
-                      <a href={apiEnableUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3 w-3" />
-                        APIを有効化する
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              )}
-              {syncStatus === 'success' && (
-                <p className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
-                  {fetchedEvents.length}件の予定を同期・保存しました。
-                </p>
-              )}
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="border-none bg-primary/5 shadow-sm">
+            <CardContent className="p-4 space-y-1">
+              <div className="flex items-center gap-2 text-primary">
+                <ClipboardCheck className="h-4 w-4" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">未報告</span>
+              </div>
+              <p className="text-2xl font-bold">{counts.report}<span className="text-xs font-normal ml-1">件</span></p>
             </CardContent>
           </Card>
-        )}
+          <Card className="border-none bg-primary/5 shadow-sm">
+            <CardContent className="p-4 space-y-1">
+              <div className="flex items-center gap-2 text-primary">
+                <ListTodo className="h-4 w-4" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">未分類</span>
+              </div>
+              <p className="text-2xl font-bold">{counts.classify}<span className="text-xs font-normal ml-1">件</span></p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-3">
+          <Button 
+            onClick={handleSync} 
+            disabled={syncStatus === 'syncing' || syncStatus === 'saving'}
+            variant="outline" 
+            className="w-full h-12 rounded-2xl gap-2 font-medium bg-white/50 border-primary/10"
+          >
+            <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4"} />
+            カレンダーを同期する
+          </Button>
+          <Button 
+            onClick={() => auth.signOut()}
+            variant="ghost" 
+            className="w-full h-12 rounded-2xl text-muted-foreground hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            ログアウト
+          </Button>
+        </div>
 
         {quote && (
-          <Card className="border-none bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-xl overflow-hidden relative">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <Trophy className="h-24 w-24" />
-            </div>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold uppercase tracking-widest opacity-80 flex items-center gap-2">
-                <Sparkles className="h-3 w-3" /> 
-                Today's Motivation
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6 relative z-10">
-              <div className="space-y-2">
-                <p className="text-xl font-headline leading-tight italic">"{quote.text}"</p>
-                <p className="text-right text-xs opacity-70">— {quote.author}</p>
+          <Card className="border-none bg-white shadow-sm overflow-hidden relative">
+            <CardContent className="p-8 space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-primary/40">
+                  <Sparkles className="h-3 w-3" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">今日のことば</span>
+                </div>
+                <p className="text-lg font-headline leading-relaxed italic text-primary/80">"{quote.text}"</p>
               </div>
-              <div className="pt-4 border-t border-white/20">
-                <p className="text-sm font-bold text-yellow-300">{quote.question}</p>
-                <p className="text-xs opacity-80 mt-1">{quote.subMessage}</p>
+              <div className="pt-4 border-t border-primary/5">
+                <p className="text-sm font-medium text-foreground/70">{quote.question}</p>
+                <p className="text-[11px] text-muted-foreground mt-1 opacity-70">{quote.subMessage}</p>
               </div>
             </CardContent>
           </Card>

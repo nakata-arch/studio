@@ -1,36 +1,35 @@
-
 import { Quote } from "./types";
 
 export const MOCK_QUOTES: Quote[] = [
   {
     id: '1',
-    text: "時間とは、使い方の最も下手な者が、最も不足を訴えるものである。",
-    author: "ジャン・ド・ラ・ブリュイエール",
+    text: "時間を大切にするということは、自分自身を大切にするということです。",
+    author: "心に響く言葉",
     displayTiming: 'morning',
-    subMessage: "今日という一日をどう奏でますか？",
-    question: "最も大切にしたい予定は何ですか？"
+    subMessage: "今日は、どんな時間を過ごしたいですか？",
+    question: "一番大切にしたいことは何ですか？"
   },
   {
     id: '2',
-    text: "明日死ぬかのように生きよ。永遠に生きるかのように学べ。",
-    author: "マハトマ・ガンジー",
+    text: "立ち止まることは、後退ではありません。次の一歩のための静かな準備です。",
+    author: "静かな智慧",
     displayTiming: 'any',
-    subMessage: "今この瞬間は二度と戻りません。",
-    question: "今日、自分にとって本当に価値のあることに時間を使えましたか？"
+    subMessage: "少し、深呼吸をしてみませんか。",
+    question: "今の気持ちは、どんな色をしていますか？"
   },
   {
     id: '3',
-    text: "行動は、必ずしも幸福をもたらさないが、行動のないところに幸福はない。",
-    author: "ベンジャミン・ディズレーリ",
+    text: "完璧でなくても大丈夫。今日という日を終えられたことを、まずは喜びましょう。",
+    author: "明日のための休息",
     displayTiming: 'evening',
-    subMessage: "お疲れ様でした。今日の一歩を祝福しましょう。",
-    question: "明日への一歩、何を積み上げたいですか？"
+    subMessage: "一日、本当にお疲れ様でした。",
+    question: "今日、心が動いた瞬間はありましたか？"
   }
 ];
 
 export const QUADRANTS = {
-  urgent_important: { label: '緊急かつ重要', color: 'bg-red-500', hover: 'hover:bg-red-600', icon: '🔥' },
-  not_urgent_important: { label: '重要だが緊急でない', color: 'bg-blue-500', hover: 'hover:bg-blue-600', icon: '🌟' },
-  urgent_not_important: { label: '緊急だが重要でない', color: 'bg-yellow-500', hover: 'hover:bg-yellow-600', icon: '⚡' },
-  not_urgent_not_important: { label: '緊急でも重要でもない', color: 'bg-gray-500', hover: 'hover:bg-gray-600', icon: '☁️' },
+  urgent_important: { label: 'いま、向き合いたいこと', color: 'bg-rose-100 text-rose-700', hover: 'hover:bg-rose-200', icon: '🍃' },
+  not_urgent_important: { label: '大切に育てたいこと', color: 'bg-indigo-100 text-indigo-700', hover: 'hover:bg-indigo-200', icon: '✨' },
+  urgent_not_important: { label: '手短に済ませたいこと', color: 'bg-amber-100 text-amber-700', hover: 'hover:bg-amber-200', icon: '⌛' },
+  not_urgent_not_important: { label: '今は手放してもよいこと', color: 'bg-slate-100 text-slate-700', hover: 'hover:bg-slate-200', icon: '☁️' },
 } as const;
