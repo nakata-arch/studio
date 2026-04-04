@@ -15,7 +15,8 @@ import {
   RefreshCw,
   User as UserIcon,
   ClipboardCheck,
-  ListTodo
+  ListTodo,
+  ExternalLink
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export default function SettingsPage() {
   const handleSync = async () => {
     if (!user) return;
     setSyncStatus('syncing');
+    setErrorDetails(null);
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 
@@ -64,7 +67,7 @@ export default function SettingsPage() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      if (!accessToken) throw new Error("認証に失敗しました。");
+      if (!accessToken) throw new Error("認証に失敗しました。アクセストークンが取得できません。");
 
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
@@ -73,11 +76,22 @@ export default function SettingsPage() {
       );
 
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || "同期に失敗しました。");
+      
+      if (!response.ok) {
+        const errorMsg = body.error?.message || response.statusText;
+        if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
+          setErrorDetails("Google Cloud ConsoleでCalendar APIを有効にする必要があります。");
+          setSyncStatus('failed');
+          return;
+        }
+        throw new Error(`APIエラー: ${errorMsg}`);
+      }
 
       setSyncStatus('saving');
+      const items = body.items || [];
       const now = Date.now();
-      for (const ev of (body.items || [])) {
+      
+      for (const ev of items) {
         const eventRef = doc(db, "users", user.uid, "events", ev.id);
         await setDoc(eventRef, {
           id: ev.id,
@@ -85,6 +99,7 @@ export default function SettingsPage() {
           googleEventId: ev.id,
           title: ev.summary || "(タイトルなし)",
           description: ev.description || "",
+          location: ev.location || "",
           startAt: ev.start?.dateTime || ev.start?.date,
           endAt: ev.end?.dateTime || ev.end?.date,
           calendarName: "Google Calendar",
@@ -92,14 +107,16 @@ export default function SettingsPage() {
           reportStatus: null,
           syncStatus: 'synced',
           isReported: false,
+          source: "google_calendar",
           lastSyncedAt: now,
           updatedAt: now,
         }, { merge: true });
       }
 
       setSyncStatus('success');
-      toast({ title: "整いました", description: "カレンダーの情報を更新しました。" });
+      toast({ title: "整いました", description: `${items.length}件の予定を同期しました。` });
       
+      // 更新後のカウント取得
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
       const all = snap.docs.map(d => d.data() as AppEvent);
@@ -107,14 +124,17 @@ export default function SettingsPage() {
         report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
         classify: all.filter(e => !e.quadrantCategory).length
       });
-      setSyncStatus('idle');
+      
+      setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
         setSyncStatus('idle');
         return;
       }
+      console.error("Sync Error:", err);
       setSyncStatus('failed');
-      toast({ variant: "destructive", title: "お困りですか？", description: err.message });
+      setErrorDetails(err.message);
+      toast({ variant: "destructive", title: "同期できませんでした", description: err.message });
     }
   };
 
@@ -122,9 +142,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-8 pt-16">
-        <h1 className="text-3xl font-bold font-headline">設定</h1>
-      </header>
+      <header className="p-8 pt-16 flex justify-between items-center" />
 
       <main className="px-8 space-y-10">
         <div className="flex items-center gap-4">
@@ -169,6 +187,20 @@ export default function SettingsPage() {
             <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4 opacity-40"} />
             カレンダーを同期する
           </Button>
+
+          {syncStatus === 'failed' && errorDetails?.includes("APIを有効にする") && (
+            <Button
+              variant="secondary"
+              className="w-full h-12 rounded-xl gap-2 text-xs"
+              asChild
+            >
+              <a href={`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=34460193112`} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3 w-3" />
+                Google Cloud ConsoleでAPIを有効化する
+              </a>
+            </Button>
+          )}
+
           <Button 
             onClick={() => auth.signOut()}
             variant="ghost" 

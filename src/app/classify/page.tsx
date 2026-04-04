@@ -31,9 +31,10 @@ export default function ClassifyPage() {
 
       try {
         const snap = await getDocs(q);
-        const filtered = snap.docs
-          .map(d => d.data() as AppEvent)
-          .filter(ev => !ev.quadrantCategory);
+        const all = snap.docs.map(d => d.data() as AppEvent);
+        // 優先度がついていないものをすべて表示
+        const filtered = all.filter(ev => !ev.quadrantCategory);
+        console.log(`Classify: Found ${filtered.length} unclassified events`);
         setEvents(filtered);
       } catch (err: any) {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
@@ -68,11 +69,7 @@ export default function ClassifyPage() {
     <div className="flex flex-col min-h-screen bg-background pb-40">
       <QuotePopup />
       
-      <header className="p-8 pt-16">
-        <h1 className="text-3xl font-bold font-headline">分類</h1>
-      </header>
-
-      <main className="flex-1 px-8 flex flex-col items-center pt-4">
+      <main className="flex-1 px-8 flex flex-col items-center pt-24">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 opacity-60">
             <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">

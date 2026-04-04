@@ -33,10 +33,11 @@ export default function ReportPage() {
       try {
         const snap = await getDocs(q);
         const today = endOfToday();
-        const filtered = snap.docs
-          .map(d => d.data() as AppEvent)
-          .filter(ev => !ev.reportStatus && isBefore(new Date(ev.startAt), today));
+        const all = snap.docs.map(d => d.data() as AppEvent);
+        // 今日を含む過去の未報告イベントを表示
+        const filtered = all.filter(ev => !ev.reportStatus && isBefore(new Date(ev.startAt), today));
         
+        console.log(`Report: Found ${filtered.length} pending reports`);
         setEvents(filtered);
         const initial: Record<string, string> = {};
         filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
@@ -71,11 +72,7 @@ export default function ReportPage() {
     <div className="flex flex-col min-h-screen bg-background pb-32">
       <QuotePopup />
       
-      <header className="p-8 pt-16">
-        <h1 className="text-3xl font-bold font-headline">報告</h1>
-      </header>
-
-      <main className="flex-1 px-8 flex flex-col items-center justify-center">
+      <main className="flex-1 px-8 flex flex-col items-center justify-center pt-16">
         {events.length === 0 ? (
           <div className="text-center space-y-6 opacity-60">
             <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto border border-primary/10">

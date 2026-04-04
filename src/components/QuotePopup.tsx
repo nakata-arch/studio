@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sparkles } from "lucide-react";
 import { MOCK_QUOTES } from "@/lib/mock-data";
 import { Quote } from "@/lib/types";
@@ -28,6 +28,7 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="border-none bg-white/90 backdrop-blur-xl max-w-[90vw] rounded-[2.5rem] p-10 shadow-2xl">
+        <DialogTitle className="sr-only">今日のことば</DialogTitle>
         <div className="space-y-8 text-center">
           <div className="flex justify-center">
             <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center">

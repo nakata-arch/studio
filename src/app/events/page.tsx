@@ -7,7 +7,7 @@ import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { AppEvent } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Clock, Filter, Database } from "lucide-react";
+import { Loader2, Clock, Database } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ export default function EventsPage() {
       try {
         const snap = await getDocs(q);
         const fetched = snap.docs.map(doc => ({ ...doc.data() } as AppEvent));
+        console.log(`Events: Fetched total ${fetched.length} events`);
         setEvents(fetched);
       } catch (err) {
         console.error("Fetch all events failed:", err);
@@ -45,8 +46,7 @@ export default function EventsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
-      <header className="p-8 pt-16 flex justify-between items-end">
-        <h1 className="text-3xl font-bold font-headline">予定</h1>
+      <header className="p-8 pt-16 flex justify-end items-center">
         <Badge variant="secondary" className="gap-1 rounded-full px-3">
           <Database className="h-3 w-3 opacity-40" /> {events.length}
         </Badge>

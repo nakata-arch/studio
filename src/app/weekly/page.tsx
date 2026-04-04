@@ -39,12 +39,14 @@ export default function WeeklyPage() {
           return isWithinInterval(date, { start, end });
         });
 
+        console.log(`Weekly: Total ${allEvents.length} events, ${events.length} in current week`);
+
         const done = events.filter(e => e.reportStatus === 'done').length;
         setStats({ total: events.length, done });
 
         if (events.length > 0) {
           const result = await aiWeeklyReportSummary({
-            targetPeriod: `${format(start, "MM/dd")} - ${format(end, "MM/dd")}`,
+            targetPeriod: `${format(start, "M月d日")} 〜 ${format(end, "M月d日")}`,
             eventCount: events.length,
             quadrantCounts: {
               urgent_important: events.filter(e => e.quadrantCategory === 'urgent_important').length,
@@ -68,17 +70,16 @@ export default function WeeklyPage() {
         setLoading(false);
       }
     };
-    if (user) fetchData();
-  }, [user, db]);
+    if (!isUserLoading && user) fetchData();
+  }, [user, isUserLoading, db]);
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin opacity-20" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
       <header className="p-8 pt-16 space-y-1">
-        <h1 className="text-3xl font-bold font-headline">日記</h1>
         <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest opacity-60">
-          {format(startOfWeek(new Date(), { weekStartsOn: 1 }), "M月d日")} 〜 {format(new Date(), "M月d日")}
+          {format(startOfWeek(new Date(), { weekStartsOn: 1 }), "M月d日")} 〜 {format(new Date(), "M月d日")} の歩み
         </p>
       </header>
 
