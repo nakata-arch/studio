@@ -1,70 +1,44 @@
 
-/**
- * DAYS Firestore Security Rules
- * 
- * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for all personal data (profiles, events, 
- * and summaries) while providing public, read-only access to global motivational content. 
- * The system leverages path-based authorization to ensure high performance and zero 
- * 'get()' call overhead.
- * 
- * Data Structure:
- * - /users/{userId}: Private user profile.
- * - /users/{userId}/events/{eventId}: Private calendar events owned by the user.
- * - /users/{userId}/summaries/{summaryId}: Private activity summaries owned by the user.
- * - /quotes/{quoteId}: Publicly accessible motivational quotes.
- */
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // --- Helper Functions ---
 
-    /** @description Checks if the request is from an authenticated user. */
+    /** @description ユーザーがサインインしているか確認 */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    /** @description 認証されたユーザーのUIDが指定されたuserIdと一致するか確認 */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** @description Combines ownership check with a check for document existence for updates/deletes. */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
     }
 
     // --- Collection Rules ---
 
     match /users/{userId} {
+      // ユーザー自身のプロファイルへのアクセス
       allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
+      allow list: if false; // ユーザー一覧の取得は禁止
+      allow create, update, delete: if isOwner(userId);
 
+      // イベント（予定）サブコレクション
       match /events/{eventId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
-        allow delete: if isExistingOwner(userId);
+        // 所有者であれば、そのコレクション内のドキュメントの読み書きをすべて許可
+        allow read, write: if isOwner(userId);
       }
 
+      // サマリー（日記・集計）サブコレクション
       match /summaries/{summaryId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
-        allow delete: if isExistingOwner(userId);
+        allow read, write: if isOwner(userId);
       }
     }
 
+    // 名言データは誰でも読み取り可能
     match /quotes/{quoteId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
-
-    

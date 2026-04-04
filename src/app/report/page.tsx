@@ -45,15 +45,15 @@ export default function ReportPage() {
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
 
-      // 直近の報告済みを取得 (30件に制限してパフォーマンスを維持)
-      const qReported = query(
-        eventsRef, 
-        where("isReported", "==", true), 
-        orderBy("updatedAt", "desc"), 
-        limit(30)
+      // 直近の報告済みを取得
+      // 複合クエリのインデックスエラーを避けるため、シンプルなクエリで取得してクライアント側でフィルタリング
+      const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
+      const snapRecent = await getDocs(qRecent);
+      setRecentEvents(
+        snapRecent.docs
+          .map(d => d.data() as AppEvent)
+          .filter(ev => !!ev.reportStatus)
       );
-      const snapReported = await getDocs(qReported);
-      setRecentEvents(snapReported.docs.map(d => d.data() as AppEvent));
 
     } catch (err: any) {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
@@ -69,14 +69,23 @@ export default function ReportPage() {
   const handleUpdate = async (eventId: string, status: ReportStatus) => {
     if (!user) return;
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
-    const updateData = { reportStatus: status, reportMemo: memo[eventId] || "", isReported: true, updatedAt: Date.now() };
+    const updateData = { 
+      reportStatus: status, 
+      reportMemo: memo[eventId] || "", 
+      isReported: true, 
+      updatedAt: Date.now() 
+    };
 
     updateDoc(eventDoc, updateData)
       .then(() => {
         fetchEvents();
       })
       .catch(err => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ 
+          path: eventDoc.path, 
+          operation: 'update',
+          requestResourceData: updateData
+        }));
       });
   };
 
