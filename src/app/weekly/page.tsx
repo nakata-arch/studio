@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -39,7 +38,7 @@ import {
   endOfDay
 } from "date-fns";
 import { ja } from "date-fns/locale";
-import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
+import { aiWeeklyReportSummary, type AiWeeklyReportSummaryOutput } from "@/ai/flows/ai-weekly-report-summary";
 import { refineReflection } from "@/ai/flows/ai-refine-reflection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +57,7 @@ export default function DiaryPage() {
   const [mainTab, setMainTab] = useState<MainTabType>('diary');
   const [subTab, setSubTab] = useState<SubTabType>('weekly');
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [aiResult, setAiResult] = useState<{ summary: string; insight: string } | null>(null);
+  const [aiResult, setAiResult] = useState<AiWeeklyReportSummaryOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [dailyMemo, setDailyMemo] = useState("");
   const [isSavingMemo, setIsSavingMemo] = useState(false);
@@ -205,15 +204,28 @@ export default function DiaryPage() {
 
   useEffect(() => {
     const fetchAiSummary = async () => {
-      if (mainTab === 'diary' || periodEvents.length === 0) {
+      if (periodEvents.length === 0) {
         setAiResult(null);
         return;
       }
       setIsAiLoading(true);
-      const range = getPeriodRange(subTab, selectedDate);
+      
+      let targetPeriodLabel = "";
+      let periodType: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'weekly';
+      
+      if (mainTab === 'diary') {
+        targetPeriodLabel = format(selectedDate, "yyyy年M月d日");
+        periodType = 'daily';
+      } else {
+        const range = getPeriodRange(subTab, selectedDate);
+        targetPeriodLabel = `${format(range.start, "yyyy年M月d日")} 〜 ${format(range.end, "M月d日")}`;
+        periodType = subTab;
+      }
+
       try {
         const result = await aiWeeklyReportSummary({
-          targetPeriod: `${format(range.start, "yyyy年M月d日")} 〜 ${format(range.end, "M月d日")}`,
+          targetPeriod: targetPeriodLabel,
+          periodType: periodType,
           eventCount: periodEvents.length,
           quadrantCounts: {
             urgent_important: periodEvents.filter(e => e.quadrantCategory === 'urgent_important').length,
@@ -225,7 +237,8 @@ export default function DiaryPage() {
             done: stats.done,
             failed: stats.failed,
             cancelled: stats.cancelled,
-          }
+          },
+          userReflection: mainTab === 'diary' ? dailyMemo : undefined,
         });
         setAiResult(result);
       } catch (err) {
@@ -234,10 +247,11 @@ export default function DiaryPage() {
         setIsAiLoading(false);
       }
     };
-    if (user && !isEventsLoading && mainTab === 'aggregate') {
+
+    if (user && !isEventsLoading) {
       fetchAiSummary();
     }
-  }, [mainTab, subTab, periodEvents, user, isEventsLoading, stats, selectedDate]);
+  }, [mainTab, subTab, periodEvents.length, user, isEventsLoading, selectedDate]);
 
   const dateLabel = useMemo(() => {
     const now = new Date();
@@ -306,6 +320,26 @@ export default function DiaryPage() {
                 </Card>
               ))}
             </div>
+
+            {/* AI分析表示 (日記タブでも表示するように追加) */}
+            {aiResult && !isAiLoading && (
+              <Card className="border-none shadow-sm bg-primary/[0.02] rounded-[2rem] overflow-hidden">
+                <CardContent className="p-6 space-y-4">
+                   <div className="flex items-center gap-2 text-primary/40">
+                    <Sparkles className="h-3 w-3" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest">AIの眼差し</span>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-foreground/70 leading-relaxed italic">
+                      {aiResult.trendSummary}
+                    </p>
+                    <p className="text-[11px] font-medium text-foreground/80 leading-relaxed italic">
+                      {aiResult.reflection}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* 今日の日記メモ */}
             <Card className="border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden">
@@ -477,9 +511,14 @@ export default function DiaryPage() {
                   </div>
                 ) : aiResult ? (
                   <div className="space-y-10">
-                    <p className="text-lg font-headline leading-relaxed text-foreground/70 italic">
-                      {aiResult.summary}
-                    </p>
+                    <div className="space-y-4">
+                      <p className="text-sm font-medium leading-relaxed text-foreground/60 italic">
+                        {aiResult.trendSummary}
+                      </p>
+                      <p className="text-lg font-headline leading-relaxed text-foreground/70 italic">
+                        {aiResult.reflection}
+                      </p>
+                    </div>
                     
                     <div className="p-8 bg-primary/5 rounded-[2rem] space-y-4 border border-primary/5">
                       <div className="flex items-center gap-2 text-primary/60">
@@ -487,7 +526,7 @@ export default function DiaryPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider">自分への問いかけ</span>
                       </div>
                       <p className="text-xs text-foreground/60 leading-relaxed italic">
-                        {aiResult.insight}
+                        {aiResult.question}
                       </p>
                     </div>
                   </div>
