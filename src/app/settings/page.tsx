@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -37,12 +38,9 @@ export default function SettingsPage() {
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    // 起動時に確実に名言を表示する
-    const hours = new Date().getHours();
-    const timing = hours < 12 ? 'morning' : hours > 18 ? 'evening' : 'any';
-    const filtered = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
-    const source = filtered.length > 0 ? filtered : MOCK_QUOTES;
-    setQuote(source[Math.floor(Math.random() * source.length)]);
+    // 起動時に名言をランダムに設定
+    const randomQuote = MOCK_QUOTES[Math.floor(Math.random() * MOCK_QUOTES.length)];
+    setQuote(randomQuote);
 
     const fetchCounts = async () => {
       if (!user) return;
@@ -108,7 +106,16 @@ export default function SettingsPage() {
 
       setSyncStatus('success');
       toast({ title: "整いました", description: "カレンダーの情報を更新しました。" });
-      router.refresh();
+      
+      // 数値の再取得
+      const eventsRef = collection(db, "users", user.uid, "events");
+      const snap = await getDocs(eventsRef);
+      const all = snap.docs.map(d => d.data() as AppEvent);
+      setCounts({
+        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
+        classify: all.filter(e => !e.quadrantCategory).length
+      });
+      setSyncStatus('idle');
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
         setSyncStatus('idle');
@@ -123,80 +130,76 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-8 pt-16">
-        <h1 className="text-3xl font-bold font-headline tracking-tight">設定</h1>
-      </header>
-
-      <main className="px-6 space-y-8">
+      <main className="px-6 pt-16 space-y-10">
         <div className="flex items-center gap-4 px-2">
-          <Avatar className="h-14 w-14 ring-4 ring-white shadow-sm shrink-0">
+          <Avatar className="h-16 w-16 ring-4 ring-white shadow-sm shrink-0">
             <AvatarImage src={user.photoURL || ""} />
-            <AvatarFallback><UserIcon /></AvatarFallback>
+            <AvatarFallback><UserIcon className="h-8 w-8 opacity-20" /></AvatarFallback>
           </Avatar>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="text-lg font-bold truncate">{user.displayName}</h3>
-            <p className="text-xs text-muted-foreground opacity-70 truncate">{user.email}</p>
+            <h3 className="text-xl font-bold truncate tracking-tight">{user.displayName}</h3>
+            <p className="text-xs text-muted-foreground opacity-60 truncate">{user.email}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Card className="border-none bg-primary/5 shadow-sm">
-            <CardContent className="p-4 space-y-1">
-              <div className="flex items-center gap-2 text-primary">
-                <ClipboardCheck className="h-4 w-4" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">未報告</span>
+          <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
+            <CardContent className="p-5 space-y-1">
+              <div className="flex items-center gap-2 text-primary/60">
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">未報告</span>
               </div>
-              <p className="text-2xl font-bold">{counts.report}<span className="text-xs font-normal ml-1">件</span></p>
+              <p className="text-3xl font-bold tracking-tighter">{counts.report}<span className="text-xs font-normal ml-1 opacity-40">件</span></p>
             </CardContent>
           </Card>
-          <Card className="border-none bg-primary/5 shadow-sm">
-            <CardContent className="p-4 space-y-1">
-              <div className="flex items-center gap-2 text-primary">
-                <ListTodo className="h-4 w-4" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">未分類</span>
+          <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
+            <CardContent className="p-5 space-y-1">
+              <div className="flex items-center gap-2 text-primary/60">
+                <ListTodo className="h-3.5 w-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">未分類</span>
               </div>
-              <p className="text-2xl font-bold">{counts.classify}<span className="text-xs font-normal ml-1">件</span></p>
+              <p className="text-3xl font-bold tracking-tighter">{counts.classify}<span className="text-xs font-normal ml-1 opacity-40">件</span></p>
             </CardContent>
           </Card>
         </div>
 
-        <div className="space-y-3">
+        {quote && (
+          <Card className="border-none bg-white shadow-xl overflow-hidden relative rounded-[2.5rem]">
+            <CardContent className="p-8 space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-primary/30">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">静かなことば</span>
+                </div>
+                <p className="text-lg font-headline leading-relaxed italic text-foreground/70">"{quote.text}"</p>
+              </div>
+              <div className="pt-5 border-t border-primary/5 space-y-1">
+                <p className="text-sm font-medium text-foreground/60">{quote.question}</p>
+                <p className="text-[11px] text-muted-foreground opacity-50">{quote.subMessage}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="space-y-3 pt-4">
           <Button 
             onClick={handleSync} 
             disabled={syncStatus === 'syncing' || syncStatus === 'saving'}
             variant="outline" 
-            className="w-full h-12 rounded-2xl gap-2 font-medium bg-white/50 border-primary/10"
+            className="w-full h-14 rounded-2xl gap-3 font-medium bg-white/50 border-primary/10 hover:bg-white transition-all shadow-sm"
           >
-            <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4"} />
+            <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4 opacity-50"} />
             カレンダーを同期する
           </Button>
           <Button 
             onClick={() => auth.signOut()}
             variant="ghost" 
-            className="w-full h-12 rounded-2xl text-muted-foreground hover:text-destructive"
+            className="w-full h-12 rounded-2xl text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
           >
-            <LogOut className="h-4 w-4 mr-2" />
+            <LogOut className="h-4 w-4 mr-2 opacity-50" />
             ログアウト
           </Button>
         </div>
-
-        {quote && (
-          <Card className="border-none bg-white shadow-sm overflow-hidden relative">
-            <CardContent className="p-8 space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-primary/40">
-                  <Sparkles className="h-3 w-3" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">静かなことば</span>
-                </div>
-                <p className="text-lg font-headline leading-relaxed italic text-primary/80 break-words">"{quote.text}"</p>
-              </div>
-              <div className="pt-4 border-t border-primary/5">
-                <p className="text-sm font-medium text-foreground/70 break-words">{quote.question}</p>
-                <p className="text-[11px] text-muted-foreground mt-1 opacity-70 break-words">{quote.subMessage}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </main>
 
       <Navigation />
