@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -163,7 +164,7 @@ export default function DiaryPage() {
         audioDataUri
       });
       setDailyMemo(result.refinedText);
-      toast({ title: "AIが整えました", description: "日記の文章を清書しました。" });
+      toast({ title: audioDataUri ? "聞き取りました" : "AIが整えました", description: "日記を清書しました。" });
     } catch (err) {
       console.error("Refine failed:", err);
       toast({ variant: "destructive", title: "AI整形エラー", description: "うまく文章を整えられませんでした。" });
@@ -329,7 +330,7 @@ export default function DiaryPage() {
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className={`h-8 w-8 p-0 rounded-full ${isRecording ? 'text-rose-500 bg-rose-50 animate-pulse' : 'text-primary/40 hover:text-primary hover:bg-primary/5'}`}
+                      className={`h-8 w-8 p-0 rounded-full transition-all ${isRecording ? 'text-rose-500 bg-rose-50 animate-pulse' : 'text-primary/40 hover:text-primary hover:bg-primary/5'}`}
                       onClick={isRecording ? stopRecording : startRecording}
                       disabled={isRefining}
                       title={isRecording ? "録音を停止してAIで整形" : "ボイスメモで振り返る"}
