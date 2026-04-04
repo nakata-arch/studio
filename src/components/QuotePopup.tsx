@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -17,9 +16,38 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
 
   useEffect(() => {
     if (trigger) {
-      const randomQuote = MOCK_QUOTES[Math.floor(Math.random() * MOCK_QUOTES.length)];
-      setQuote(randomQuote);
-      setOpen(true);
+      const now = new Date();
+      const hour = now.getHours();
+      
+      // 時間帯の定義 (morning: 5-12, evening: 18-5, any: always)
+      const currentTiming = 
+        hour >= 5 && hour < 12 ? 'morning' : 
+        hour >= 18 || hour < 5 ? 'evening' : 'any';
+
+      // 1. 時間帯に合う名言を抽出 (anyは常に候補)
+      const candidates = MOCK_QUOTES.filter(q => 
+        q.displayTiming === 'any' || q.displayTiming === currentTiming
+      );
+
+      // 2. 直前に表示された名言を除外 (localStorageを利用)
+      const lastId = typeof window !== 'undefined' ? localStorage.getItem('last_quote_id') : null;
+      const filtered = candidates.filter(q => q.id !== lastId);
+
+      // 除外した結果、候補が空になった場合は除外前のリストから選ぶ
+      const finalPool = filtered.length > 0 ? filtered : candidates;
+      
+      if (finalPool.length > 0) {
+        const selected = finalPool[Math.floor(Math.random() * finalPool.length)];
+        setQuote(selected);
+        
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('last_quote_id', selected.id);
+        }
+        
+        // 少し遅らせて表示することで、画面遷移時のチラつきを抑え、静かな登場を演出
+        const timer = setTimeout(() => setOpen(true), 500);
+        return () => clearTimeout(timer);
+      }
     }
   }, [trigger]);
 
