@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { Loader2, Calendar as CalendarIcon, Clock, History } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -19,28 +19,38 @@ export default function ClassifyPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const [events, setEvents] = useState<AppEvent[]>([]);
+  const [recentClassified, setRecentClassified] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      if (!user) return;
-      const eventsRef = collection(db, "users", user.uid, "events");
-      const q = query(eventsRef, orderBy("startAt", "asc"));
+  const fetchEvents = async () => {
+    if (!user) return;
+    const eventsRef = collection(db, "users", user.uid, "events");
+    const q = query(eventsRef, orderBy("startAt", "asc"));
 
-      try {
-        const snap = await getDocs(q);
-        const all = snap.docs.map(d => d.data() as AppEvent);
-        // 優先度がついていないものをすべて表示
-        const filtered = all.filter(ev => !ev.quadrantCategory);
-        console.log(`Classify: Found ${filtered.length} unclassified events`);
-        setEvents(filtered);
-      } catch (err: any) {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
-      } finally {
-        setLoading(false);
-      }
-    };
+    try {
+      const snap = await getDocs(q);
+      const all = snap.docs.map(d => d.data() as AppEvent);
+      
+      // 未分類の抽出
+      const unclassified = all.filter(ev => !ev.quadrantCategory);
+      setEvents(unclassified);
+
+      // 最近の分類済みを抽出
+      const classified = all
+        .filter(ev => !!ev.quadrantCategory)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(0, 5);
+      setRecentClassified(classified);
+
+    } catch (err: any) {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
@@ -51,9 +61,8 @@ export default function ClassifyPage() {
     
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .then(() => {
-        const next = events.filter((_, i) => i !== currentIndex);
-        setEvents(next);
-        if (currentIndex >= next.length && next.length > 0) setCurrentIndex(next.length - 1);
+        // 再取得してリストを更新
+        fetchEvents();
       })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
@@ -70,11 +79,42 @@ export default function ClassifyPage() {
       
       <main className="flex-1 px-8 flex flex-col items-center pt-24">
         {events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[50vh] text-center space-y-6 opacity-60">
-            <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
-              <CalendarIcon className="text-primary/40 h-8 w-8" />
+          <div className="w-full max-w-sm space-y-10 animate-in fade-in duration-700">
+            <div className="text-center space-y-4 opacity-60 pt-10">
+              <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto border border-primary/10">
+                <CalendarIcon className="text-primary/40 h-8 w-8" />
+              </div>
+              <p className="text-sm font-medium">すべての分類が整いました</p>
             </div>
-            <p className="text-sm">すべて整いました</p>
+
+            {recentClassified.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-2 text-primary/30">
+                  <History className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">最近の分類</span>
+                </div>
+                <div className="space-y-3">
+                  {recentClassified.map(ev => (
+                    <Card key={ev.id} className="border-none shadow-sm bg-white/60 rounded-2xl overflow-hidden">
+                      <CardContent className="p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <h4 className="text-[13px] font-bold text-foreground/70 truncate">{ev.title}</h4>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground opacity-50">
+                            <Clock className="h-3 w-3" />
+                            {format(parseISO(ev.startAt), "M/d HH:mm")}
+                          </div>
+                        </div>
+                        {ev.quadrantCategory && (
+                          <div className="w-8 h-8 bg-primary/5 rounded-lg flex items-center justify-center shrink-0" title={QUADRANTS[ev.quadrantCategory]?.label}>
+                            <span className="text-sm">{QUADRANTS[ev.quadrantCategory]?.icon}</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-full max-w-sm space-y-4">
