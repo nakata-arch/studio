@@ -169,12 +169,11 @@ export default function DiaryPage() {
     }
   };
 
-  const getPeriodRange = (type: SubTabType) => {
-    const now = new Date();
+  const getPeriodRange = (type: SubTabType, referenceDate: Date) => {
     switch (type) {
-      case 'weekly': return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
-      case 'monthly': return { start: startOfMonth(now), end: endOfMonth(now) };
-      case 'yearly': return { start: startOfYear(now), end: endOfYear(now) };
+      case 'weekly': return { start: startOfWeek(referenceDate, { weekStartsOn: 1 }), end: endOfWeek(referenceDate, { weekStartsOn: 1 }) };
+      case 'monthly': return { start: startOfMonth(referenceDate), end: endOfMonth(referenceDate) };
+      case 'yearly': return { start: startOfYear(referenceDate), end: endOfYear(referenceDate) };
     }
   };
 
@@ -188,7 +187,7 @@ export default function DiaryPage() {
         return isWithinInterval(date, { start, end });
       });
     }
-    const range = getPeriodRange(subTab);
+    const range = getPeriodRange(subTab, selectedDate);
     return allEvents.filter(e => {
       const date = parseISO(e.startAt);
       return isWithinInterval(date, range);
@@ -211,7 +210,7 @@ export default function DiaryPage() {
         return;
       }
       setIsAiLoading(true);
-      const range = getPeriodRange(subTab);
+      const range = getPeriodRange(subTab, selectedDate);
       try {
         const result = await aiWeeklyReportSummary({
           targetPeriod: `${format(range.start, "yyyy年M月d日")} 〜 ${format(range.end, "M月d日")}`,
@@ -238,7 +237,7 @@ export default function DiaryPage() {
     if (user && !isEventsLoading && mainTab === 'aggregate') {
       fetchAiSummary();
     }
-  }, [mainTab, subTab, periodEvents, user, isEventsLoading, stats]);
+  }, [mainTab, subTab, periodEvents, user, isEventsLoading, stats, selectedDate]);
 
   const dateLabel = useMemo(() => {
     const now = new Date();
