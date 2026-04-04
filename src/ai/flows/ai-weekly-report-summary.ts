@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview This file defines a Genkit flow for generating an AI-powered summary of a user's weekly time management performance.
+ * @fileOverview This file defines a Genkit flow for generating an AI-powered summary of a user's time management performance.
  *
  * - aiWeeklyReportSummary - A function that handles the AI summary generation process.
  * - AiWeeklyReportSummaryInput - The input type for the aiWeeklyReportSummary function.
@@ -11,7 +11,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiWeeklyReportSummaryInputSchema = z.object({
-  targetPeriod: z.string().describe('The period covered by the weekly report (e.g., "YYYY-MM-DD to YYYY-MM-DD").'),
+  targetPeriod: z.string().describe('The period covered by the report (e.g., "YYYY-MM-DD to YYYY-MM-DD").'),
   eventCount: z.number().describe('The total number of events in the report period.'),
   quadrantCounts: z.object({
     urgent_important: z.number().describe('Count of urgent and important events.'),
@@ -29,8 +29,8 @@ const AiWeeklyReportSummaryInputSchema = z.object({
 export type AiWeeklyReportSummaryInput = z.infer<typeof AiWeeklyReportSummaryInputSchema>;
 
 const AiWeeklyReportSummaryOutputSchema = z.object({
-  summary: z.string().describe('An AI-generated summary of the weekly time management performance.'),
-  insight: z.string().optional().describe('Optional actionable insights or gentle suggestions based on the summary.'),
+  summary: z.string().describe('A gentle AI-generated reflection message based on performance.'),
+  insight: z.string().describe('A reflective question for the user to encourage introspection.'),
 });
 export type AiWeeklyReportSummaryOutput = z.infer<typeof AiWeeklyReportSummaryOutputSchema>;
 
@@ -42,26 +42,38 @@ const aiWeeklyReportSummaryPrompt = ai.definePrompt({
   name: 'aiWeeklyReportSummaryPrompt',
   input: { schema: AiWeeklyReportSummaryInputSchema },
   output: { schema: AiWeeklyReportSummaryOutputSchema },
-  prompt: `You are a supportive time management coach. Your goal is to provide a gentle, encouraging, and insightful summary of the user's weekly performance based on their report data. Help them understand their productivity patterns and identify areas for improvement without being critical.
+  prompt: `あなたは穏やかで思慮深いタイムマネジメント・コーチです。
+ユーザーの期間中（{{{targetPeriod}}}）の活動データに基づき、優しく語りかけるような振り返りメッセージと問いかけを生成してください。
 
-Here is the weekly report data for the period: {{{targetPeriod}}}
+データ:
+- 合計予定数: {{{eventCount}}}
+- 4象限の分布:
+  - 緊急かつ重要: {{{quadrantCounts.urgent_important}}}
+  - 緊急ではないが重要: {{{quadrantCounts.not_urgent_important}}}
+  - 緊急だが重要ではない: {{{quadrantCounts.urgent_not_important}}}
+  - 緊急でも重要でもない: {{{quadrantCounts.not_urgent_not_important}}}
+- 完了状態:
+  - できた: {{{statusCounts.done}}}
+  - 未達: {{{statusCounts.failed}}}
+  - 中止: {{{statusCounts.cancelled}}}
 
-- Total Events: {{{eventCount}}}
-- Quadrant Breakdown:
-  - Urgent & Important (Red): {{{quadrantCounts.urgent_important}}}
-  - Not Urgent & Important (Blue): {{{quadrantCounts.not_urgent_important}}}
-  - Urgent & Not Important (Yellow): {{{quadrantCounts.urgent_not_important}}}
-  - Not Urgent & Not Important (Grey): {{{quadrantCounts.not_urgent_not_important}}}
-- Completion Status:
-  - Done: {{{statusCounts.done}}}
-  - Failed: {{{statusCounts.failed}}}
-  - Cancelled: {{{statusCounts.cancelled}}}
-{{#if userReflection}}
-- User's Personal Reflection: "{{{userReflection}}}"
-{{/if}}
+指針:
+1. 振り返りメッセージ（summary）:
+   - 1〜2文で短く。
+   - 断定を避け「〜かもしれません」「〜のようです」といった柔らかい表現を使ってください。
+   - 決して責めず、ユーザーが自分の状況を静かに眺められるようにします。
+   - 判断基準の例:
+     - 緊急（🚨）が多い場合: 「少し忙しさに追われていたかもしれません。」
+     - 重要（✨）が少ない場合: 「大切なことに使える時間が、少し少なかったかもしれません。」
+     - 全体のバランスが良い場合: 「落ち着いた時間の使い方ができていたようです。」
+     - 完了率（できた割合）が低い場合: 「少し無理な予定が多かったかもしれません。」
+     - 完了率が高い場合: 「一つひとつ丁寧に進められていたようです。」
 
-Based on this information, provide a concise summary of their week's time management performance. Focus on patterns, strengths, and subtle areas where they might consider adjusting their approach. Keep the tone warm, understanding, and forward-looking. Provide a main 'summary' and an optional 'insight' which could be a gentle suggestion or a reflective question.
-`,
+2. 問いかけ（insight）:
+   - ユーザーが次への一歩を考えるきっかけになるような短い問いかけを1つ添えてください。
+   - 例: 「次は何を減らしたいですか？」「本当に大切にしたいことは何ですか？」
+
+出力はJSON形式で、"summary" と "insight" にそれぞれ格納してください。`,
 });
 
 const aiWeeklyReportSummaryFlow = ai.defineFlow(
@@ -73,7 +85,7 @@ const aiWeeklyReportSummaryFlow = ai.defineFlow(
   async (input) => {
     const { output } = await aiWeeklyReportSummaryPrompt(input);
     if (!output) {
-      throw new Error('Failed to generate weekly report summary.');
+      throw new Error('Failed to generate report summary.');
     }
     return output;
   }

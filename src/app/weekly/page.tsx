@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -32,10 +31,9 @@ export default function DiaryPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<PeriodType>('diary');
-  const [aiResult, setAiResult] = useState<{ summary: string; insight?: string } | null>(null);
+  const [aiResult, setAiResult] = useState<{ summary: string; insight: string } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // Get all events for the user
   const eventsQuery = useMemoFirebase(() => {
     if (!user) return null;
     return query(
@@ -46,7 +44,6 @@ export default function DiaryPage() {
 
   const { data: allEvents, isLoading: isEventsLoading } = useCollection<AppEvent>(eventsQuery);
 
-  // Helper to get date range for each period type
   const getPeriodRange = (type: PeriodType) => {
     const now = new Date();
     switch (type) {
@@ -57,11 +54,10 @@ export default function DiaryPage() {
     }
   };
 
-  // Filter events based on active tab
   const periodEvents = useMemo(() => {
     if (!allEvents) return [];
     if (activeTab === 'diary') {
-      return allEvents.filter(e => e.reportStatus); // Only reported events for diary
+      return allEvents.filter(e => e.reportStatus);
     }
     const range = getPeriodRange(activeTab);
     return allEvents.filter(e => {
@@ -70,7 +66,6 @@ export default function DiaryPage() {
     });
   }, [allEvents, activeTab]);
 
-  // Grouping for Diary tab
   const groupedDiaryEvents = useMemo(() => {
     if (activeTab !== 'diary') return [];
     const groups: { date: Date; events: AppEvent[] }[] = [];
@@ -87,7 +82,6 @@ export default function DiaryPage() {
     return groups;
   }, [periodEvents, activeTab]);
 
-  // AI Summary generation
   useEffect(() => {
     const fetchAiSummary = async () => {
       if (activeTab === 'diary' || periodEvents.length === 0) {
@@ -97,7 +91,7 @@ export default function DiaryPage() {
 
       setIsAiLoading(true);
       const range = getPeriodRange(activeTab);
-      const done = periodEvents.filter(e => e.reportStatus === 'done').length;
+      const doneCount = periodEvents.filter(e => e.reportStatus === 'done').length;
 
       try {
         const result = await aiWeeklyReportSummary({
@@ -110,7 +104,7 @@ export default function DiaryPage() {
             not_urgent_not_important: periodEvents.filter(e => e.quadrantCategory === 'not_urgent_not_important').length,
           },
           statusCounts: {
-            done,
+            done: doneCount,
             failed: periodEvents.filter(e => e.reportStatus === 'failed').length,
             cancelled: periodEvents.filter(e => e.reportStatus === 'cancelled').length,
           }
@@ -143,12 +137,12 @@ export default function DiaryPage() {
           <div className="w-10 h-10 bg-primary/5 rounded-2xl flex items-center justify-center border border-primary/5">
             <BookOpen className="text-primary/40 h-5 w-5" />
           </div>
-          <h1 className="text-xl font-headline font-bold text-foreground/70">歩みの記録</h1>
+          <h1 className="text-xl font-headline font-bold text-foreground/70">日記</h1>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PeriodType)} className="w-full">
           <TabsList className="grid w-full grid-cols-4 bg-primary/5 rounded-2xl h-12 p-1 border-none">
-            <TabsTrigger value="diary" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">日記</TabsTrigger>
+            <TabsTrigger value="diary" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">日次</TabsTrigger>
             <TabsTrigger value="weekly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">週間</TabsTrigger>
             <TabsTrigger value="monthly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">月間</TabsTrigger>
             <TabsTrigger value="yearly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">年間</TabsTrigger>
@@ -217,7 +211,6 @@ export default function DiaryPage() {
           </div>
         ) : (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* Period Summary Stats */}
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-none shadow-sm bg-white rounded-[2rem]">
                 <CardContent className="p-6 flex flex-col items-center">
@@ -235,7 +228,6 @@ export default function DiaryPage() {
               </Card>
             </div>
 
-            {/* AI Reflection Card */}
             <Card className="border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden">
               <CardContent className="p-10 space-y-10">
                 <div className="flex items-center gap-3 text-primary/30">
@@ -256,17 +248,15 @@ export default function DiaryPage() {
                       {aiResult.summary}
                     </p>
                     
-                    {aiResult.insight && (
-                      <div className="p-8 bg-primary/5 rounded-[2rem] space-y-4 border border-primary/5">
-                        <div className="flex items-center gap-2 text-primary/60">
-                          <Heart className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">ひとさじの助言</span>
-                        </div>
-                        <p className="text-xs text-foreground/60 leading-relaxed italic">
-                          {aiResult.insight}
-                        </p>
+                    <div className="p-8 bg-primary/5 rounded-[2rem] space-y-4 border border-primary/5">
+                      <div className="flex items-center gap-2 text-primary/60">
+                        <Heart className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">自分への問いかけ</span>
                       </div>
-                    )}
+                      <p className="text-xs text-foreground/60 leading-relaxed italic">
+                        {aiResult.insight}
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic text-center py-10">
@@ -277,7 +267,6 @@ export default function DiaryPage() {
               </CardContent>
             </Card>
 
-            {/* Quadrant Breakdown */}
             {periodEvents.length > 0 && (
               <div className="space-y-4">
                 <h3 className="text-[10px] font-bold text-primary/40 uppercase tracking-[0.2em] px-2">時間の質</h3>
