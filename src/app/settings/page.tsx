@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { doc, setDoc, collection, query, getDocs } from "firebase/firestore";
+import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { MOCK_QUOTES } from "@/lib/mock-data";
@@ -15,7 +15,6 @@ import {
   RefreshCw,
   User as UserIcon,
   Sparkles,
-  ExternalLink,
   ClipboardCheck,
   ListTodo
 } from "lucide-react";
@@ -38,20 +37,27 @@ export default function SettingsPage() {
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    const timing = new Date().getHours() < 12 ? 'morning' : new Date().getHours() > 18 ? 'evening' : 'any';
+    // 起動時に確実に名言を表示する
+    const hours = new Date().getHours();
+    const timing = hours < 12 ? 'morning' : hours > 18 ? 'evening' : 'any';
     const filtered = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
-    setQuote(filtered[Math.floor(Math.random() * filtered.length)]);
+    const source = filtered.length > 0 ? filtered : MOCK_QUOTES;
+    setQuote(source[Math.floor(Math.random() * source.length)]);
 
     const fetchCounts = async () => {
       if (!user) return;
-      const eventsRef = collection(db, "users", user.uid, "events");
-      const snap = await getDocs(eventsRef);
-      const all = snap.docs.map(d => d.data() as AppEvent);
-      
-      setCounts({
-        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
-        classify: all.filter(e => !e.quadrantCategory).length
-      });
+      try {
+        const eventsRef = collection(db, "users", user.uid, "events");
+        const snap = await getDocs(eventsRef);
+        const all = snap.docs.map(d => d.data() as AppEvent);
+        
+        setCounts({
+          report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
+          classify: all.filter(e => !e.quadrantCategory).length
+        });
+      } catch (e) {
+        console.error("Count fetch failed", e);
+      }
     };
     if (user) fetchCounts();
   }, [user, db]);
@@ -104,6 +110,10 @@ export default function SettingsPage() {
       toast({ title: "整いました", description: "カレンダーの情報を更新しました。" });
       router.refresh();
     } catch (err: any) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        setSyncStatus('idle');
+        return;
+      }
       setSyncStatus('failed');
       toast({ variant: "destructive", title: "お困りですか？", description: err.message });
     }
@@ -119,13 +129,13 @@ export default function SettingsPage() {
 
       <main className="px-6 space-y-8">
         <div className="flex items-center gap-4 px-2">
-          <Avatar className="h-14 w-14 ring-4 ring-white shadow-sm">
+          <Avatar className="h-14 w-14 ring-4 ring-white shadow-sm shrink-0">
             <AvatarImage src={user.photoURL || ""} />
             <AvatarFallback><UserIcon /></AvatarFallback>
           </Avatar>
-          <div className="space-y-0.5">
-            <h3 className="text-lg font-bold">{user.displayName}</h3>
-            <p className="text-xs text-muted-foreground opacity-70">{user.email}</p>
+          <div className="space-y-0.5 min-w-0">
+            <h3 className="text-lg font-bold truncate">{user.displayName}</h3>
+            <p className="text-xs text-muted-foreground opacity-70 truncate">{user.email}</p>
           </div>
         </div>
 
@@ -176,13 +186,13 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-primary/40">
                   <Sparkles className="h-3 w-3" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">今日のことば</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">静かなことば</span>
                 </div>
-                <p className="text-lg font-headline leading-relaxed italic text-primary/80">"{quote.text}"</p>
+                <p className="text-lg font-headline leading-relaxed italic text-primary/80 break-words">"{quote.text}"</p>
               </div>
               <div className="pt-4 border-t border-primary/5">
-                <p className="text-sm font-medium text-foreground/70">{quote.question}</p>
-                <p className="text-[11px] text-muted-foreground mt-1 opacity-70">{quote.subMessage}</p>
+                <p className="text-sm font-medium text-foreground/70 break-words">{quote.question}</p>
+                <p className="text-[11px] text-muted-foreground mt-1 opacity-70 break-words">{quote.subMessage}</p>
               </div>
             </CardContent>
           </Card>

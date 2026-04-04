@@ -28,8 +28,8 @@ export const MOCK_QUOTES: Quote[] = [
 ];
 
 export const QUADRANTS = {
-  urgent_important: { label: 'いま、向き合いたいこと', color: 'bg-rose-100 text-rose-700', hover: 'hover:bg-rose-200', icon: '🍃' },
-  not_urgent_important: { label: '大切に育てたいこと', color: 'bg-indigo-100 text-indigo-700', hover: 'hover:bg-indigo-200', icon: '✨' },
-  urgent_not_important: { label: '手短に済ませたいこと', color: 'bg-amber-100 text-amber-700', hover: 'hover:bg-amber-200', icon: '⌛' },
-  not_urgent_not_important: { label: '今は手放してもよいこと', color: 'bg-slate-100 text-slate-700', hover: 'hover:bg-slate-200', icon: '☁️' },
+  urgent_important: { label: '緊急かつ重要', color: 'bg-rose-100 text-rose-700', hover: 'hover:bg-rose-200', icon: '🍃' },
+  not_urgent_important: { label: '緊急ではないが重要', color: 'bg-indigo-100 text-indigo-700', hover: 'hover:bg-indigo-200', icon: '✨' },
+  urgent_not_important: { label: '緊急だが重要ではない', color: 'bg-amber-100 text-amber-700', hover: 'hover:bg-amber-200', icon: '⌛' },
+  not_urgent_not_important: { label: '緊急でも重要でもない', color: 'bg-slate-100 text-slate-700', hover: 'hover:bg-slate-200', icon: '☁️' },
 } as const;

@@ -28,7 +28,7 @@ export function Navigation() {
               href={item.href}
               className={cn(
                 "flex flex-col items-center justify-center w-full h-full transition-all duration-300",
-                isActive ? "text-primary translate-y-[-2px]" : "text-muted-foreground opacity-50 hover:opacity-100"
+                isActive ? "text-primary" : "text-muted-foreground/60 hover:text-muted-foreground"
               )}
             >
               <div className={cn(
@@ -37,7 +37,12 @@ export function Navigation() {
               )}>
                 <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
               </div>
-              <span className={cn("text-[9px] font-bold tracking-tight mt-1", !isActive && "opacity-0 scale-90")}>{item.label}</span>
+              <span className={cn(
+                "text-[9px] font-bold tracking-tight mt-1 transition-opacity",
+                isActive ? "opacity-100" : "opacity-70"
+              )}>
+                {item.label}
+              </span>
             </Link>
           );
         })}

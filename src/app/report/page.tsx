@@ -38,6 +38,7 @@ export default function ReportPage() {
         const initial: Record<string, string> = {};
         filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
         setMemo(initial);
+        console.log("Report events fetched:", filtered.length);
       } catch (err: any) {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
       } finally {
@@ -90,9 +91,9 @@ export default function ReportPage() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
                             <CalendarIcon className="h-3 w-3" />
-                            {event.calendarName}
+                            <span className="truncate">{event.calendarName}</span>
                           </div>
-                          <h2 className="text-xl font-headline leading-tight text-foreground/80">{event.title}</h2>
+                          <h2 className="text-xl font-headline leading-tight text-foreground/80 break-words">{event.title}</h2>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60">
                             <Clock className="h-3.5 w-3.5" />
                             {format(new Date(event.startAt), "M月d日(E) HH:mm", { locale: ja })}
@@ -105,22 +106,22 @@ export default function ReportPage() {
                             placeholder="どんな時間でしたか？" 
                             value={memo[event.id] || ""} 
                             onChange={(e) => setMemo({ ...memo, [event.id]: e.target.value })}
-                            className="text-sm min-h-[120px] bg-primary/5 border-none rounded-2xl focus-visible:ring-primary/10"
+                            className="text-sm min-h-[100px] bg-primary/5 border-none rounded-2xl focus-visible:ring-primary/10 resize-none"
                           />
                         </div>
                         
                         <div className="grid grid-cols-3 gap-3">
-                          <Button variant="outline" className="flex-col h-20 rounded-2xl border-none bg-primary/5 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95" onClick={() => handleUpdate(event.id, 'done')}>
+                          <Button variant="outline" className="flex-col h-18 rounded-2xl border-none bg-primary/5 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 px-1" onClick={() => handleUpdate(event.id, 'done')}>
                             <Check className="h-5 w-5 mb-1 opacity-60" />
-                            <span className="text-[10px] font-bold">できた</span>
+                            <span className="text-[9px] font-bold">できた</span>
                           </Button>
-                          <Button variant="outline" className="flex-col h-20 rounded-2xl border-none bg-primary/5 hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95" onClick={() => handleUpdate(event.id, 'failed')}>
+                          <Button variant="outline" className="flex-col h-18 rounded-2xl border-none bg-primary/5 hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 px-1" onClick={() => handleUpdate(event.id, 'failed')}>
                             <X className="h-5 w-5 mb-1 opacity-60" />
-                            <span className="text-[10px] font-bold">失敗</span>
+                            <span className="text-[9px] font-bold">失敗</span>
                           </Button>
-                          <Button variant="outline" className="flex-col h-20 rounded-2xl border-none bg-primary/5 hover:bg-slate-50 hover:text-slate-700 transition-all active:scale-95" onClick={() => handleUpdate(event.id, 'cancelled')}>
+                          <Button variant="outline" className="flex-col h-18 rounded-2xl border-none bg-primary/5 hover:bg-slate-50 hover:text-slate-700 transition-all active:scale-95 px-1" onClick={() => handleUpdate(event.id, 'cancelled')}>
                             <Ban className="h-5 w-5 mb-1 opacity-60" />
-                            <span className="text-[10px] font-bold">中止</span>
+                            <span className="text-[9px] font-bold">中止</span>
                           </Button>
                         </div>
                       </CardContent>
