@@ -19,21 +19,20 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
       const now = new Date();
       const hour = now.getHours();
       
-      // 時間帯の定義 (morning: 5-12, evening: 18-5, any: always)
-      const currentTiming = 
-        hour >= 5 && hour < 12 ? 'morning' : 
-        hour >= 18 || hour < 5 ? 'evening' : 'any';
+      // 時間帯の判定: 0〜11時 → morning, 12〜23時 → evening
+      const currentTiming = (hour >= 0 && hour < 12) ? 'morning' : 'evening';
 
-      // 1. 時間帯に合う名言を抽出 (anyは常に候補)
+      // 1. 時間帯に合う名言を抽出 (現在の時間帯 または 'any')
       const candidates = MOCK_QUOTES.filter(q => 
         q.displayTiming === 'any' || q.displayTiming === currentTiming
       );
 
       // 2. 直前に表示された名言を除外 (localStorageを利用)
       const lastId = typeof window !== 'undefined' ? localStorage.getItem('last_quote_id') : null;
-      const filtered = candidates.filter(q => q.id !== lastId);
+      let filtered = candidates.filter(q => q.id !== lastId);
 
-      // 除外した結果、候補が空になった場合は除外前のリストから選ぶ
+      // 3. 候補が空になった場合は、除外前のリスト（candidates）に戻す
+      // (1件しかない場合や、すべての候補を一度見た場合など)
       const finalPool = filtered.length > 0 ? filtered : candidates;
       
       if (finalPool.length > 0) {
@@ -44,7 +43,7 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
           localStorage.setItem('last_quote_id', selected.id);
         }
         
-        // 少し遅らせて表示することで、画面遷移時のチラつきを抑え、静かな登場を演出
+        // 少し遅らせて表示することで、静かな登場を演出
         const timer = setTimeout(() => setOpen(true), 500);
         return () => clearTimeout(timer);
       }

@@ -100,7 +100,7 @@ export const MOCK_QUOTES: Quote[] = [
   {
     id: "13",
     text: "一日の終わりに、その日に種をまいたことを誇りに思いなさい。",
-    author: "ロバート・ルイス・スティーヴンソン",
+    author: "ロバート・ルイス : スティーヴンソン",
     displayTiming: "evening",
     subMessage: "収穫は明日以降の自分に任せて、今は休みましょう。",
     question: "今日、どんな小さな種をまきましたか？"
