@@ -52,16 +52,17 @@ export interface Quote {
   question: string;
 }
 
-export interface WeeklySummary {
+export interface Summary {
   id: string;
   userId: string;
+  summaryType: 'daily' | 'weekly' | 'monthly' | 'yearly';
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   summaryText: string;
   insightText?: string;
-  stats: {
-    totalEvents: number;
-    quadrantCounts: Record<QuadrantCategory, number>;
-    statusCounts: Record<ReportStatus, number>;
-  };
+  totalEventsCount?: number;
+  doneCount?: number;
+  failedCount?: number;
+  cancelledCount?: number;
+  updatedAt?: any;
 }
