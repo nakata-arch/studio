@@ -3,8 +3,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, where } from "firebase/firestore";
-import { AppEvent, QuadrantCategory, ReportStatus } from "@/lib/types";
+import { collection, query, orderBy } from "firebase/firestore";
+import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Sparkles, Heart, Calendar as CalendarIcon, Clock, MessageSquare, BookOpen } from "lucide-react";
@@ -22,7 +22,7 @@ import {
 } from "date-fns";
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { QUADRANTS } from "@/lib/mock-data";
 
@@ -35,7 +35,7 @@ export default function DiaryPage() {
   const [aiResult, setAiResult] = useState<{ summary: string; insight?: string } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // 全イベントを取得
+  // Get all events for the user
   const eventsQuery = useMemoFirebase(() => {
     if (!user) return null;
     return query(
@@ -46,7 +46,7 @@ export default function DiaryPage() {
 
   const { data: allEvents, isLoading: isEventsLoading } = useCollection<AppEvent>(eventsQuery);
 
-  // 期間ごとのフィルタリング
+  // Helper to get date range for each period type
   const getPeriodRange = (type: PeriodType) => {
     const now = new Date();
     switch (type) {
@@ -57,11 +57,11 @@ export default function DiaryPage() {
     }
   };
 
+  // Filter events based on active tab
   const periodEvents = useMemo(() => {
     if (!allEvents) return [];
     if (activeTab === 'diary') {
-      // 日記タブでは報告済みのものすべてを表示
-      return allEvents.filter(e => e.reportStatus);
+      return allEvents.filter(e => e.reportStatus); // Only reported events for diary
     }
     const range = getPeriodRange(activeTab);
     return allEvents.filter(e => {
@@ -70,12 +70,13 @@ export default function DiaryPage() {
     });
   }, [allEvents, activeTab]);
 
-  // 日記タブ用の日付グルーピング
+  // Grouping for Diary tab
   const groupedDiaryEvents = useMemo(() => {
     if (activeTab !== 'diary') return [];
     const groups: { date: Date; events: AppEvent[] }[] = [];
     periodEvents.forEach(event => {
-      const date = startOfDay(parseISO(event.startAt));
+      const date = new Date(parseISO(event.startAt));
+      date.setHours(0, 0, 0, 0);
       const existing = groups.find(g => isSameDay(g.date, date));
       if (existing) {
         existing.events.push(event);
@@ -86,13 +87,7 @@ export default function DiaryPage() {
     return groups;
   }, [periodEvents, activeTab]);
 
-  function startOfDay(date: Date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  // AI要約の取得
+  // AI Summary generation
   useEffect(() => {
     const fetchAiSummary = async () => {
       if (activeTab === 'diary' || periodEvents.length === 0) {
@@ -222,7 +217,7 @@ export default function DiaryPage() {
           </div>
         ) : (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* 期間サマリーカード */}
+            {/* Period Summary Stats */}
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-none shadow-sm bg-white rounded-[2rem]">
                 <CardContent className="p-6 flex flex-col items-center">
@@ -240,7 +235,7 @@ export default function DiaryPage() {
               </Card>
             </div>
 
-            {/* AIリフレクションカード */}
+            {/* AI Reflection Card */}
             <Card className="border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden">
               <CardContent className="p-10 space-y-10">
                 <div className="flex items-center gap-3 text-primary/30">
@@ -282,7 +277,7 @@ export default function DiaryPage() {
               </CardContent>
             </Card>
 
-            {/* 四象限の内訳 */}
+            {/* Quadrant Breakdown */}
             {periodEvents.length > 0 && (
               <div className="space-y-4">
                 <h3 className="text-[10px] font-bold text-primary/40 uppercase tracking-[0.2em] px-2">時間の質</h3>
