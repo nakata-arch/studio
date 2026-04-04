@@ -1,111 +1,111 @@
 import { Quote } from "./types";
 
-export const MOCK_QUOTES: Quote[] = [
-  {
-    id: "1",
-    text: "時間は命そのものです。時間は、あなたが持つ唯一の真の財産です。",
-    author: "アーノルド・ベネット",
-    displayTiming: "evening",
-    subMessage: "一日の終わりに、静かに自分をねぎらいましょう。",
-    question: "今日、あなたの命（時間）は、何のために輝きましたか？"
-  },
-  {
-    id: "2",
-    text: "あなたの時間は限られています。他人の人生を生きることで、その時間を無駄にしてはいけません。",
-    author: "スティーブ・ジョブズ",
-    displayTiming: "any",
-    subMessage: "誰かの期待ではなく、あなたの心の声に耳を傾けてみましょう。",
-    question: "今、あなたは「自分のための時間」を過ごせていますか？"
-  },
-  {
-    id: "3",
-    text: "最も重要なことは、最も重要なことを、最も重要なままにしておくことだ。",
-    author: "スティーブン・R・コヴィー",
-    displayTiming: "morning",
-    subMessage: "今日、これだけは大切にしたいと思うことを一つだけ選んでみましょう。",
-    question: "あなたにとって、今日一番「大切なこと」は何ですか？"
-  },
-  {
-    id: "4",
-    text: "忙しいということは、しばしば生産的であることの「言い訳」に使われる。",
-    author: "ティム・フェリス",
-    displayTiming: "any",
-    subMessage: "ただ動いているのと、目的地に向かっているのは違います。",
-    question: "その忙しさは、あなたをどこへ運んでくれますか？"
-  },
-  {
-    id: "5",
-    text: "何をしないかを決めることは、何をするかを決めることと同じくらい重要だ。",
-    author: "スティーブ・ジョブズ",
-    displayTiming: "morning",
-    subMessage: "選ばない勇気が、本当に大切なものを守ってくれます。",
-    question: "今日、あえて「やらない」と決めることはありますか？"
-  },
-  {
-    id: "6",
-    text: "ゆっくり進むことを恐れるな。ただ立ち止まることだけを恐れなさい。",
-    author: "中国のことわざ",
-    displayTiming: "morning",
-    subMessage: "歩みの速さは人それぞれ。あなたらしい速度で大丈夫です。",
-    question: "今日は、昨日より一歩だけ、心の向く方へ踏み出してみませんか？"
-  },
-  {
-    id: "7",
-    text: "人生には、ただスピードを上げるよりも、もっと大切なことがある。",
-    author: "マハトマ・ガンジー",
-    displayTiming: "evening",
-    subMessage: "焦らなくても、時間はあなたのそばにあります。",
-    question: "今日は、ゆっくりとした呼吸で過ごせる時間がありましたか？"
-  },
-  {
-    id: "8",
-    text: "昨日より少し良ければ、それでいい。完璧である必要はありません。",
-    author: "不詳",
-    displayTiming: "evening",
-    subMessage: "小さな変化を、自分自身で認めてあげましょう。",
-    question: "今日、少しだけ「自分を褒めてあげたい」ことは何ですか？"
-  },
-  {
-    id: "9",
-    text: "休息は怠惰ではありません。それは、次に進むための大切な準備です。",
-    author: "ジョン・ラボック",
-    displayTiming: "any",
-    subMessage: "休むことも、立派なタスクの一つです。",
-    question: "心と体を休める時間を、自分に許してあげていますか？"
-  },
-  {
-    id: "10",
-    text: "今日という日は、残りの人生の最初の日。いつだって、新しく始められます。",
-    author: "不詳",
-    displayTiming: "morning",
-    subMessage: "昨日の後悔は昨日に置いて、新しい朝を迎えましょう。",
-    question: "新しい一日、どんな「小さな幸せ」を予定に入れますか？"
-  }
-];
-
 export const QUADRANTS = {
   urgent_important: {
-    label: "緊急・重要",
-    icon: "🔥",
-    color: "bg-rose-50 text-rose-700",
-    hover: "hover:bg-rose-100"
+    icon: '🔥',
+    label: '緊急・重要',
+    color: 'bg-rose-50 text-rose-600',
+    hover: 'hover:bg-rose-100',
   },
   not_urgent_important: {
-    label: "緊急でない・重要",
-    icon: "🌱",
-    color: "bg-indigo-50 text-indigo-700",
-    hover: "hover:bg-indigo-100"
+    icon: '🌱',
+    label: '緊急ではない・重要',
+    color: 'bg-indigo-50 text-indigo-600',
+    hover: 'hover:bg-indigo-100',
   },
   urgent_not_important: {
-    label: "緊急・重要でない",
-    icon: "⚡",
-    color: "bg-amber-50 text-amber-700",
-    hover: "hover:bg-amber-100"
+    icon: '🔔',
+    label: '緊急・重要ではない',
+    color: 'bg-amber-50 text-amber-600',
+    hover: 'hover:bg-amber-100',
   },
   not_urgent_not_important: {
-    label: "緊急でない・重要でない",
-    icon: "☁️",
-    color: "bg-slate-50 text-slate-700",
-    hover: "hover:bg-slate-100"
-  }
+    icon: '☁️',
+    label: '緊急ではない・重要ではない',
+    color: 'bg-slate-50 text-slate-600',
+    hover: 'hover:bg-slate-100',
+  },
 };
+
+export const MOCK_QUOTES: Quote[] = [
+  {
+    id: '1',
+    text: "時間は、私たちが最も欲しがるものですが、最も無駄に使ってしまうものでもあります。",
+    author: "ウィリアム・ペン",
+    displayTiming: 'any',
+    subMessage: "今この瞬間、何に心を向けていますか？",
+    question: "本当に大切にしたいことは何ですか？"
+  },
+  {
+    id: '2',
+    text: "時間は命そのものです。時間を無駄にすることは、人生を無駄にすることです。",
+    author: "アーノルド・ベネット",
+    displayTiming: 'morning',
+    subMessage: "新しい一日の始まりに、少しだけ深呼吸を。",
+    question: "今日は、どんな時間を過ごしたいですか？"
+  },
+  {
+    id: '3',
+    text: "あなたの時間は限られている。だから、誰か他の人の人生を生きることで無駄にしてはいけない。",
+    author: "スティーブ・ジョブズ",
+    displayTiming: 'morning',
+    subMessage: "あなた自身の心の声に、耳を澄ませてみてください。",
+    question: "あなたにとって、一番自然な自分でいられる時間はいつですか？"
+  },
+  {
+    id: '4',
+    text: "一日は、一生の縮図である。",
+    author: "アーサー・ショーペンハウアー",
+    displayTiming: 'evening',
+    subMessage: "今日という小さな一生が、もうすぐ幕を閉じます。",
+    question: "今日の時間の使い方に、納得できていますか？"
+  },
+  {
+    id: '5',
+    text: "今日という日は、残りの人生の最初の日である。",
+    author: "チャールズ・ディードリッヒ",
+    displayTiming: 'morning',
+    subMessage: "まっさらなキャンバスに、何を描きましょうか。",
+    question: "今日、新しく始めたい小さなことはありますか？"
+  },
+  {
+    id: '6',
+    text: "立ち止まることは、後退ではありません。次の一歩のための準備です。",
+    author: "不詳",
+    displayTiming: 'any',
+    subMessage: "休息もまた、大切な予定の一つです。",
+    question: "今の気持ちは、どんな状態ですか？"
+  },
+  {
+    id: '7',
+    text: "最も忙しい人が、最も多くの時間を持つ。",
+    author: "アレクサンドル・デュマ",
+    displayTiming: 'any',
+    subMessage: "時間は「作る」ものではなく、「見出す」ものかもしれません。",
+    question: "忙しさの中に、自分を失っていませんか？"
+  },
+  {
+    id: '8',
+    text: "何事も、成し遂げるまでは不可能に見えるものだ。",
+    author: "ネルソン・マンデラ",
+    displayTiming: 'any',
+    subMessage: "一歩ずつ、静かに進んでいきましょう。",
+    question: "今日、少しだけ前に進めたことは何ですか？"
+  },
+  {
+    id: '9',
+    text: "完璧である必要はない。ただ、誠実であればいい。",
+    author: "不詳",
+    displayTiming: 'evening',
+    subMessage: "できなかった自分も、優しく受け入れてあげてください。",
+    question: "今日、自分に「ありがとう」と言えることは何ですか？"
+  },
+  {
+    id: '10',
+    text: "人生は短い。しかし、急ぐ必要はない。",
+    author: "マハトマ・ガンジー",
+    displayTiming: 'any',
+    subMessage: "あなたのペースで、あなたの道を歩んでください。",
+    question: "今、心に余裕はありますか？"
+  }
+];
