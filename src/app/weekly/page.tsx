@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { collection, query, orderBy, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { AppEvent, QuadrantCategory, Summary } from "@/lib/types";
@@ -17,7 +16,10 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
-  Save
+  Save,
+  Mic,
+  Square,
+  Wand2
 } from "lucide-react";
 import { 
   startOfWeek, 
@@ -37,23 +39,32 @@ import {
 } from "date-fns";
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
+import { refineReflection } from "@/ai/flows/ai-refine-reflection";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 type PeriodType = 'diary' | 'weekly' | 'monthly' | 'yearly';
 
 export default function DiaryPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<PeriodType>('diary');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [aiResult, setAiResult] = useState<{ summary: string; insight: string } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [dailyMemo, setDailyMemo] = useState("");
   const [isSavingMemo, setIsSavingMemo] = useState(false);
+
+  // 録音関連のステート
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   // 全予定の取得
   const eventsQuery = useMemoFirebase(() => {
@@ -96,10 +107,68 @@ export default function DiaryPage() {
         summaryText: dailyMemo,
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      toast({ title: "保存しました", description: "日記を更新しました。" });
     } catch (e) {
       console.error("Save daily memo failed:", e);
     } finally {
       setIsSavingMemo(false);
+    }
+  };
+
+  // 録音開始
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Audio = reader.result as string;
+          handleRefine(base64Audio);
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      toast({ variant: "destructive", title: "録音エラー", description: "マイクの使用を許可してください。" });
+    }
+  };
+
+  // 録音停止
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // AI整形処理
+  const handleRefine = async (audioDataUri?: string) => {
+    setIsRefining(true);
+    try {
+      const result = await refineReflection({
+        text: audioDataUri ? undefined : dailyMemo,
+        audioDataUri
+      });
+      setDailyMemo(result.refinedText);
+      toast({ title: "AIが整えました", description: "日記の文章を清書しました。" });
+    } catch (err) {
+      console.error("Refine failed:", err);
+      toast({ variant: "destructive", title: "AI整形エラー", description: "うまく文章を整えられませんでした。" });
+    } finally {
+      setIsRefining(false);
     }
   };
 
@@ -256,23 +325,56 @@ export default function DiaryPage() {
                     <Sparkles className="h-4 w-4" />
                     <span className="text-[10px] font-bold uppercase tracking-widest">一日の振り返り</span>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 rounded-full text-[10px] font-bold gap-2 text-primary/40 hover:text-primary hover:bg-primary/5"
-                    onClick={handleSaveDailyMemo}
-                    disabled={isSavingMemo}
-                  >
-                    {isSavingMemo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                    保存
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className={`h-8 w-8 p-0 rounded-full ${isRecording ? 'text-rose-500 bg-rose-50 animate-pulse' : 'text-primary/40 hover:text-primary hover:bg-primary/5'}`}
+                      onClick={isRecording ? stopRecording : startRecording}
+                      disabled={isRefining}
+                      title={isRecording ? "録音を停止してAIで整形" : "ボイスメモで振り返る"}
+                    >
+                      {isRecording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 rounded-full text-primary/40 hover:text-primary hover:bg-primary/5"
+                      onClick={() => handleRefine()}
+                      disabled={isRecording || isRefining || !dailyMemo}
+                      title="AIで文章を整える"
+                    >
+                      {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 rounded-full text-[10px] font-bold gap-2 text-primary/40 hover:text-primary hover:bg-primary/5"
+                      onClick={handleSaveDailyMemo}
+                      disabled={isSavingMemo || isRecording || isRefining}
+                    >
+                      {isSavingMemo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      保存
+                    </Button>
+                  </div>
                 </div>
-                <Textarea 
-                  placeholder="今日はどんな日でしたか？ 感じたこと、残したいことを自由に書いてみましょう。"
-                  value={dailyMemo}
-                  onChange={(e) => setDailyMemo(e.target.value)}
-                  className="min-h-[120px] bg-primary/[0.02] border-none rounded-2xl resize-none text-sm leading-relaxed italic placeholder:text-muted-foreground/30 focus-visible:ring-primary/5"
-                />
+                <div className="relative">
+                  <Textarea 
+                    placeholder={isRecording ? "録音中... お話しください。" : (isRefining ? "AIが文章を整えています..." : "今日はどんな日でしたか？ 感じたこと、残したいことを自由に書いてみましょう。")}
+                    value={dailyMemo}
+                    onChange={(e) => setDailyMemo(e.target.value)}
+                    className="min-h-[160px] bg-primary/[0.02] border-none rounded-2xl resize-none text-sm leading-relaxed italic placeholder:text-muted-foreground/30 focus-visible:ring-primary/5"
+                    disabled={isRefining}
+                  />
+                  {isRefining && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-[1px] rounded-2xl">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary/40" />
+                        <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest">AI Refining...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -331,7 +433,7 @@ export default function DiaryPage() {
           </div>
         ) : (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* 既存の期間サマリー（週間・月間・年間） */}
+            {/* 期間サマリー（週間・月間・年間） */}
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-none shadow-sm bg-white rounded-[2rem]">
                 <CardContent className="p-6 flex flex-col items-center">
