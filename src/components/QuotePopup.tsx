@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -32,7 +33,6 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
       let filtered = candidates.filter(q => q.id !== lastId);
 
       // 3. 候補が空になった場合は、除外前のリスト（candidates）に戻す
-      // (1件しかない場合や、すべての候補を一度見た場合など)
       const finalPool = filtered.length > 0 ? filtered : candidates;
       
       if (finalPool.length > 0) {
@@ -43,7 +43,7 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
           localStorage.setItem('last_quote_id', selected.id);
         }
         
-        // 少し遅らせて表示することで、静かな登場を演出
+        // ページ遷移直後ではなく、一呼吸置いてから表示
         const timer = setTimeout(() => setOpen(true), 500);
         return () => clearTimeout(timer);
       }
@@ -54,22 +54,32 @@ export function QuotePopup({ trigger = true }: QuotePopupProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="border-none bg-white/90 backdrop-blur-xl max-w-[90vw] rounded-[2.5rem] p-10 shadow-2xl">
+      <DialogContent className="border-none bg-white/95 backdrop-blur-2xl max-w-[88vw] sm:max-w-[400px] rounded-[2.5rem] p-10 shadow-2xl transition-all duration-300 animate-in fade-in zoom-in-95">
         <DialogTitle className="sr-only">今日のことば</DialogTitle>
-        <div className="space-y-8 text-center">
-          <div className="flex justify-center">
-            <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center">
-              <Sparkles className="text-primary/40 h-6 w-6" />
-            </div>
+        
+        <div className="flex flex-col items-center space-y-8 py-4">
+          <div className="w-10 h-10 bg-primary/5 rounded-full flex items-center justify-center">
+            <Sparkles className="text-primary/30 h-5 w-5" />
           </div>
-          <div className="space-y-4">
-            <p className="text-lg font-headline leading-relaxed italic text-foreground/70">
-              "{quote.text}"
+
+          <div className="space-y-6 text-center">
+            <blockquote className="space-y-4">
+              <p className="text-xl font-headline leading-relaxed italic text-foreground/80 tracking-wide px-2">
+                "{quote.text}"
+              </p>
+              <cite className="block text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] not-italic">
+                — {quote.author}
+              </cite>
+            </blockquote>
+          </div>
+
+          <div className="w-12 h-px bg-primary/10" />
+
+          <div className="space-y-3 text-center">
+            <p className="text-sm font-medium text-foreground/60 leading-relaxed px-4">
+              {quote.question}
             </p>
-          </div>
-          <div className="pt-6 border-t border-primary/5 space-y-2">
-            <p className="text-sm font-medium text-foreground/60">{quote.question}</p>
-            <p className="text-[10px] text-muted-foreground opacity-50 uppercase tracking-widest">
+            <p className="text-[10px] text-muted-foreground/40 uppercase tracking-widest">
               {quote.subMessage}
             </p>
           </div>
