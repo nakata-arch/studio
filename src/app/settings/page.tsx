@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { doc, setDoc, collection } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MOCK_QUOTES } from "@/lib/mock-data";
+import { MOCK_QUOTES, QUADRANTS } from "@/lib/mock-data";
 import { Quote, AppEvent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { 
@@ -19,7 +19,6 @@ import {
   User as UserIcon,
   Mail,
   Sparkles,
-  Calendar as CalendarIcon,
   AlertCircle,
   CheckCircle2,
   ExternalLink,
@@ -27,8 +26,6 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-import { ja } from "date-fns/locale";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -56,8 +53,7 @@ export default function SettingsPage() {
     window.addEventListener('offline', handleOnlineStatus);
     setIsOffline(!navigator.onLine);
 
-    const hour = new Date().getHours();
-    const timing = hour < 12 ? 'morning' : hour > 18 ? 'evening' : 'any';
+    const timing = new Date().getHours() < 12 ? 'morning' : new Date().getHours() > 18 ? 'evening' : 'any';
     const filteredQuotes = MOCK_QUOTES.filter(q => q.displayTiming === timing || q.displayTiming === 'any');
     setQuote(filteredQuotes[Math.floor(Math.random() * filteredQuotes.length)]);
 
@@ -83,8 +79,6 @@ export default function SettingsPage() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      console.log("1. AccessToken取得可否:", !!accessToken);
-
       if (!accessToken) {
         throw new Error("アクセストークンの取得に失敗しました。");
       }
@@ -92,15 +86,13 @@ export default function SettingsPage() {
       // 過去30日から未来90日までの予定を取得
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=50&singleEvents=true&orderBy=startTime`,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=100&singleEvents=true&orderBy=startTime`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
 
-      console.log("2. Calendar API Status:", response.status);
       const body = await response.json();
-      console.log("3. Response Body:", body);
 
       if (!response.ok) {
         const errorMsg = body.error?.message || response.statusText;
@@ -113,36 +105,28 @@ export default function SettingsPage() {
       }
 
       const items = body.items || [];
-      console.log("4. Items Length:", items.length);
-
       const normalizedEvents = items.map((item: any) => ({
         id: item.id,
         title: item.summary || "(タイトルなし)",
         startAt: item.start?.dateTime || item.start?.date,
         endAt: item.end?.dateTime || item.end?.date,
         description: item.description || "",
-        location: item.location || "",
-        status: item.status,
       }));
 
-      console.log("5. Normalized Events Preview:", normalizedEvents.slice(0, 3));
       setFetchedEvents(normalizedEvents);
-      
-      // Firestoreへの保存
       setSyncStatus('saving');
-      const now = Date.now();
       
-      for (const ev of normalizedEvents) {
+      const now = Date.now();
+      for (const ev of items) {
         const eventRef = doc(db, "users", user.uid, "events", ev.id);
         const eventData: AppEvent = {
           id: ev.id,
           userId: user.uid,
           googleEventId: ev.id,
-          title: ev.title,
-          description: ev.description,
-          location: ev.location,
-          startAt: ev.startAt,
-          endAt: ev.endAt,
+          title: ev.summary || "(タイトルなし)",
+          description: ev.description || "",
+          startAt: ev.start?.dateTime || ev.start?.date,
+          endAt: ev.end?.dateTime || ev.end?.date,
           calendarId: "primary",
           calendarName: "Google Calendar",
           quadrantCategory: null,
@@ -155,17 +139,20 @@ export default function SettingsPage() {
           createdAt: now,
           updatedAt: now,
         };
-        // 保存処理 (upsert)
         await setDoc(eventRef, eventData, { merge: true });
       }
 
       setSyncStatus('success');
       toast({
         title: "保存完了",
-        description: `${normalizedEvents.length}件の予定を保存しました。`,
+        description: `${items.length}件の予定を同期・保存しました。`,
       });
 
     } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user') {
+        setSyncStatus('idle');
+        return;
+      }
       setSyncError(error.message);
       setSyncStatus('failed');
       toast({
@@ -270,11 +257,9 @@ export default function SettingsPage() {
                 </div>
               )}
               {syncStatus === 'success' && (
-                <div className="space-y-4">
-                  <p className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
-                    {fetchedEvents.length}件の予定を同期しました。
-                  </p>
-                </div>
+                <p className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100">
+                  {fetchedEvents.length}件の予定を同期・保存しました。
+                </p>
               )}
             </CardContent>
           </Card>

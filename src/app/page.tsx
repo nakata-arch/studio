@@ -17,7 +17,6 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (!isUserLoading && user) {
-      // ログイン後は「報告」ページへ遷移
       router.push("/report");
     }
   }, [user, isUserLoading, router]);
@@ -28,7 +27,10 @@ export default function LandingPage() {
     provider.addScope('https://www.googleapis.com/auth/calendar.events');
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user') {
+        return;
+      }
       console.error("Login failed:", error);
     }
   };
