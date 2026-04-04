@@ -3,13 +3,13 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy, where } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, where, limit } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, X, Ban, Loader2, Clock, Calendar as CalendarIcon, History } from "lucide-react";
+import { Check, X, Ban, Loader2, Clock, Calendar as CalendarIcon, History, ArrowRight } from "lucide-react";
 import { format, isBefore, endOfToday, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -17,6 +17,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
 import { QuotePopup } from "@/components/QuotePopup";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 
 export default function ReportPage() {
   const db = useFirestore();
@@ -31,11 +32,12 @@ export default function ReportPage() {
     const eventsRef = collection(db, "users", user.uid, "events");
     
     try {
-      const qAll = query(eventsRef, orderBy("startAt", "desc"));
-      const snap = await getDocs(qAll);
-      const all = snap.docs.map(d => d.data() as AppEvent);
-      
       const today = endOfToday();
+      
+      // 未報告の取得
+      const qUnreported = query(eventsRef, orderBy("startAt", "desc"));
+      const snapUnreported = await getDocs(qUnreported);
+      const all = snapUnreported.docs.map(d => d.data() as AppEvent);
       const filtered = all.filter(ev => !ev.reportStatus && isBefore(parseISO(ev.startAt), today));
       setEvents(filtered);
       
@@ -43,11 +45,15 @@ export default function ReportPage() {
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
 
-      // 直近の報告済みをすべて取得（完了後の表示用）
-      const reported = all
-        .filter(ev => !!ev.reportStatus)
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      setRecentEvents(reported);
+      // 直近の報告済みを取得 (30件に制限してパフォーマンスを維持)
+      const qReported = query(
+        eventsRef, 
+        where("isReported", "==", true), 
+        orderBy("updatedAt", "desc"), 
+        limit(30)
+      );
+      const snapReported = await getDocs(qReported);
+      setRecentEvents(snapReported.docs.map(d => d.data() as AppEvent));
 
     } catch (err: any) {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
@@ -95,9 +101,14 @@ export default function ReportPage() {
 
             {recentEvents.length > 0 && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 px-2 text-primary/30">
-                  <History className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">直近の報告一覧</span>
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2 text-primary/30">
+                    <History className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">直近の報告一覧</span>
+                  </div>
+                  <Link href="/events" className="text-[9px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1">
+                    すべて見る <ArrowRight className="h-2.5 w-2.5" />
+                  </Link>
                 </div>
                 <div className="space-y-3">
                   {recentEvents.map(ev => (

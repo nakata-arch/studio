@@ -3,18 +3,19 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, where, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar as CalendarIcon, Clock, History, LayoutGrid } from "lucide-react";
+import { Loader2, Clock, History, LayoutGrid, ArrowRight } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { QuotePopup } from "@/components/QuotePopup";
+import Link from "next/link";
 
 export default function ClassifyPage() {
   const db = useFirestore();
@@ -27,21 +28,33 @@ export default function ClassifyPage() {
   const fetchEvents = async () => {
     if (!user) return;
     const eventsRef = collection(db, "users", user.uid, "events");
-    const q = query(eventsRef, orderBy("startAt", "asc"));
 
     try {
-      const snap = await getDocs(q);
-      const all = snap.docs.map(d => d.data() as AppEvent);
-      
       // 未分類の抽出
-      const unclassified = all.filter(ev => !ev.quadrantCategory);
-      setEvents(unclassified);
+      const qUnclassified = query(eventsRef, orderBy("startAt", "asc"));
+      const snapUnclassified = await getDocs(qUnclassified);
+      const all = snapUnclassified.docs.map(d => d.data() as AppEvent);
+      setEvents(all.filter(ev => !ev.quadrantCategory));
 
-      // 分類済みをすべて取得（完了後の表示用）
-      const classified = all
-        .filter(ev => !!ev.quadrantCategory)
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      setRecentClassified(classified);
+      // 最近分類したものを取得 (30件に制限してパフォーマンスを維持)
+      const qClassified = query(
+        eventsRef, 
+        where("quadrantCategory", "!=", null), 
+        orderBy("quadrantCategory"), //複合インデックス対策のため必要になる場合があります
+        orderBy("updatedAt", "desc"), 
+        limit(30)
+      );
+      // 注意: Firestoreの制約により、!= 演算子を使用するとそのフィールドでまずソートされます。
+      // ここではシンプルにするため、再度全取得からフィルタリングするか、インデックスを前提としたクエリにします。
+      // パフォーマンス重視でフィルタリング方式にします。
+      const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(50));
+      const snapRecent = await getDocs(qRecent);
+      setRecentClassified(
+        snapRecent.docs
+          .map(d => d.data() as AppEvent)
+          .filter(ev => !!ev.quadrantCategory)
+          .slice(0, 30)
+      );
 
     } catch (err: any) {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
@@ -91,9 +104,14 @@ export default function ClassifyPage() {
 
             {recentClassified.length > 0 && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 px-2 text-primary/30">
-                  <History className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">分類済み予定一覧</span>
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2 text-primary/30">
+                    <History className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">分類済み予定一覧</span>
+                  </div>
+                  <Link href="/events" className="text-[9px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1">
+                    すべて見る <ArrowRight className="h-2.5 w-2.5" />
+                  </Link>
                 </div>
                 <div className="space-y-3">
                   {recentClassified.map(ev => (
