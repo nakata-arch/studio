@@ -11,16 +11,16 @@ import {
   Loader2, 
   Sparkles, 
   Heart, 
-  Calendar as CalendarIcon, 
-  Clock, 
-  MessageSquare, 
   BookOpen,
   ChevronLeft,
   ChevronRight,
   Save,
   Mic,
   Square,
-  Wand2
+  Wand2,
+  Clock,
+  MessageSquare,
+  BarChart3
 } from "lucide-react";
 import { 
   startOfWeek, 
@@ -41,20 +41,22 @@ import {
 import { ja } from "date-fns/locale";
 import { aiWeeklyReportSummary } from "@/ai/flows/ai-weekly-report-summary";
 import { refineReflection } from "@/ai/flows/ai-refine-reflection";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { QUADRANTS } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-type PeriodType = 'diary' | 'weekly' | 'monthly' | 'yearly';
+type MainTabType = 'diary' | 'aggregate';
+type SubTabType = 'weekly' | 'monthly' | 'yearly';
 
 export default function DiaryPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<PeriodType>('diary');
+  const [mainTab, setMainTab] = useState<MainTabType>('diary');
+  const [subTab, setSubTab] = useState<SubTabType>('weekly');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [aiResult, setAiResult] = useState<{ summary: string; insight: string } | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -85,7 +87,7 @@ export default function DiaryPage() {
     return doc(db, "users", user.uid, "summaries", `daily-${dateStr}`);
   }, [user, db, dateStr]);
 
-  const { data: dailySummaryDoc, isLoading: isSummaryLoading } = useDoc<Summary>(dailySummaryRef);
+  const { data: dailySummaryDoc } = useDoc<Summary>(dailySummaryRef);
 
   useEffect(() => {
     if (dailySummaryDoc) {
@@ -116,18 +118,15 @@ export default function DiaryPage() {
     }
   };
 
-  // 録音開始
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
-
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         const reader = new FileReader();
@@ -138,7 +137,6 @@ export default function DiaryPage() {
         };
         stream.getTracks().forEach(track => track.stop());
       };
-
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
@@ -147,7 +145,6 @@ export default function DiaryPage() {
     }
   };
 
-  // 録音停止
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
@@ -155,7 +152,6 @@ export default function DiaryPage() {
     }
   };
 
-  // AI整形処理
   const handleRefine = async (audioDataUri?: string) => {
     setIsRefining(true);
     try {
@@ -173,19 +169,18 @@ export default function DiaryPage() {
     }
   };
 
-  const getPeriodRange = (type: PeriodType) => {
+  const getPeriodRange = (type: SubTabType) => {
     const now = new Date();
     switch (type) {
       case 'weekly': return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
       case 'monthly': return { start: startOfMonth(now), end: endOfMonth(now) };
       case 'yearly': return { start: startOfYear(now), end: endOfYear(now) };
-      default: return { start: startOfDay(selectedDate), end: endOfDay(selectedDate) };
     }
   };
 
   const periodEvents = useMemo(() => {
     if (!allEvents) return [];
-    if (activeTab === 'diary') {
+    if (mainTab === 'diary') {
       const start = startOfDay(selectedDate);
       const end = endOfDay(selectedDate);
       return allEvents.filter(e => {
@@ -193,14 +188,14 @@ export default function DiaryPage() {
         return isWithinInterval(date, { start, end });
       });
     }
-    const range = getPeriodRange(activeTab);
+    const range = getPeriodRange(subTab);
     return allEvents.filter(e => {
       const date = parseISO(e.startAt);
       return isWithinInterval(date, range);
     });
-  }, [allEvents, activeTab, selectedDate]);
+  }, [allEvents, mainTab, subTab, selectedDate]);
 
-  const dailyStats = useMemo(() => {
+  const stats = useMemo(() => {
     return {
       total: periodEvents.length,
       done: periodEvents.filter(e => e.reportStatus === 'done').length,
@@ -211,14 +206,12 @@ export default function DiaryPage() {
 
   useEffect(() => {
     const fetchAiSummary = async () => {
-      if (activeTab === 'diary' || periodEvents.length === 0) {
+      if (mainTab === 'diary' || periodEvents.length === 0) {
         setAiResult(null);
         return;
       }
-
       setIsAiLoading(true);
-      const range = getPeriodRange(activeTab);
-
+      const range = getPeriodRange(subTab);
       try {
         const result = await aiWeeklyReportSummary({
           targetPeriod: `${format(range.start, "yyyy年M月d日")} 〜 ${format(range.end, "M月d日")}`,
@@ -230,9 +223,9 @@ export default function DiaryPage() {
             not_urgent_not_important: periodEvents.filter(e => e.quadrantCategory === 'not_urgent_not_important').length,
           },
           statusCounts: {
-            done: dailyStats.done,
-            failed: dailyStats.failed,
-            cancelled: dailyStats.cancelled,
+            done: stats.done,
+            failed: stats.failed,
+            cancelled: stats.cancelled,
           }
         });
         setAiResult(result);
@@ -242,11 +235,10 @@ export default function DiaryPage() {
         setIsAiLoading(false);
       }
     };
-
-    if (user && !isEventsLoading && activeTab !== 'diary') {
+    if (user && !isEventsLoading && mainTab === 'aggregate') {
       fetchAiSummary();
     }
-  }, [activeTab, periodEvents, user, isEventsLoading, dailyStats]);
+  }, [mainTab, subTab, periodEvents, user, isEventsLoading, stats]);
 
   const dateLabel = useMemo(() => {
     const now = new Date();
@@ -269,24 +261,22 @@ export default function DiaryPage() {
       <header className="px-8 pt-16 space-y-8">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-primary/5 rounded-2xl flex items-center justify-center border border-primary/5">
-            <BookOpen className="text-primary/40 h-5 w-5" />
+            {mainTab === 'diary' ? <BookOpen className="text-primary/40 h-5 w-5" /> : <BarChart3 className="text-primary/40 h-5 w-5" />}
           </div>
-          <h1 className="text-xl font-headline font-bold text-foreground/70">日記</h1>
+          <h1 className="text-xl font-headline font-bold text-foreground/70">{mainTab === 'diary' ? '日記' : '集計'}</h1>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PeriodType)} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-primary/5 rounded-2xl h-12 p-1 border-none">
-            <TabsTrigger value="diary" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">日次</TabsTrigger>
-            <TabsTrigger value="weekly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">週間</TabsTrigger>
-            <TabsTrigger value="monthly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">月間</TabsTrigger>
-            <TabsTrigger value="yearly" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">年間</TabsTrigger>
+        <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as MainTabType)} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-primary/5 rounded-2xl h-12 p-1 border-none">
+            <TabsTrigger value="diary" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">日記</TabsTrigger>
+            <TabsTrigger value="aggregate" className="rounded-xl text-[10px] font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm">集計</TabsTrigger>
           </TabsList>
         </Tabs>
       </header>
 
-      <main className="px-8 mt-8 space-y-8">
-        {activeTab === 'diary' ? (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <main className="px-8 mt-8">
+        <Tabs value={mainTab}>
+          <TabsContent value="diary" className="space-y-8 mt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* 日付ナビゲーション */}
             <div className="flex items-center justify-between bg-white/50 p-2 rounded-[2rem] shadow-sm">
               <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedDate(subDays(selectedDate, 1))}>
@@ -304,10 +294,10 @@ export default function DiaryPage() {
             {/* 日次サマリー */}
             <div className="grid grid-cols-4 gap-2">
               {[
-                { label: '予定', val: dailyStats.total, color: 'text-primary/60' },
-                { label: 'できた', val: dailyStats.done, color: 'text-emerald-600' },
-                { label: '未達', val: dailyStats.failed, color: 'text-rose-600' },
-                { label: '中止', val: dailyStats.cancelled, color: 'text-slate-500' }
+                { label: '予定', val: stats.total, color: 'text-primary/60' },
+                { label: 'できた', val: stats.done, color: 'text-emerald-600' },
+                { label: '未達', val: stats.failed, color: 'text-rose-600' },
+                { label: '中止', val: stats.cancelled, color: 'text-slate-500' }
               ].map((s) => (
                 <Card key={s.label} className="border-none bg-white shadow-sm rounded-2xl">
                   <CardContent className="p-3 flex flex-col items-center">
@@ -333,7 +323,6 @@ export default function DiaryPage() {
                       className={`h-8 w-8 p-0 rounded-full transition-all ${isRecording ? 'text-rose-500 bg-rose-50 animate-pulse' : 'text-primary/40 hover:text-primary hover:bg-primary/5'}`}
                       onClick={isRecording ? stopRecording : startRecording}
                       disabled={isRefining}
-                      title={isRecording ? "録音を停止してAIで整形" : "ボイスメモで振り返る"}
                     >
                       {isRecording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
                     </Button>
@@ -343,7 +332,6 @@ export default function DiaryPage() {
                       className="h-8 w-8 p-0 rounded-full text-primary/40 hover:text-primary hover:bg-primary/5"
                       onClick={() => handleRefine()}
                       disabled={isRecording || isRefining || !dailyMemo}
-                      title="AIで文章を整える"
                     >
                       {isRefining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                     </Button>
@@ -431,10 +419,31 @@ export default function DiaryPage() {
                 </div>
               )}
             </div>
-          </div>
-        ) : (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* 期間サマリー（週間・月間・年間） */}
+          </TabsContent>
+
+          <TabsContent value="aggregate" className="space-y-8 mt-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {/* 期間切り替え */}
+            <div className="flex justify-center">
+              <div className="inline-flex bg-primary/5 p-1 rounded-2xl border border-primary/5">
+                {[
+                  { id: 'weekly', label: '週間' },
+                  { id: 'monthly', label: '月間' },
+                  { id: 'yearly', label: '年間' }
+                ].map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSubTab(item.id as SubTabType)}
+                    className={`h-9 rounded-xl text-[10px] font-bold tracking-widest uppercase px-6 transition-all ${subTab === item.id ? 'bg-white shadow-sm text-primary' : 'text-primary/40'}`}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* 集計サマリー */}
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-none shadow-sm bg-white rounded-[2rem]">
                 <CardContent className="p-6 flex flex-col items-center">
@@ -452,12 +461,13 @@ export default function DiaryPage() {
               </Card>
             </div>
 
+            {/* AI振り返りメッセージ */}
             <Card className="border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden">
               <CardContent className="p-10 space-y-10">
                 <div className="flex items-center gap-3 text-primary/30">
                   <Sparkles className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-widest">
-                    {activeTab === 'weekly' ? '今週' : activeTab === 'monthly' ? '今月' : '今年'}のあなたへ
+                    この期間のあなたへ
                   </span>
                 </div>
 
@@ -491,6 +501,7 @@ export default function DiaryPage() {
               </CardContent>
             </Card>
 
+            {/* 四象限の内訳 */}
             {periodEvents.length > 0 && (
               <div className="space-y-4">
                 <h3 className="text-[10px] font-bold text-primary/40 uppercase tracking-[0.2em] px-2">時間の質</h3>
@@ -512,8 +523,8 @@ export default function DiaryPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       <Navigation />
