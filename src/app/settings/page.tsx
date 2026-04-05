@@ -37,7 +37,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hostname = window.location.hostname;
-      // プレビュー環境の判定
+      // プレビュー環境（Google認証が制限される環境）の厳密な判定
       const isStudioPreview = 
         hostname.includes("cloudworkstations.dev") || 
         hostname === "studio.firebase.google.com";
@@ -149,7 +149,7 @@ export default function SettingsPage() {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "カレンダー同期のための再認証は、firebase deploy 後の本番ドメインでのみ動作します。",
+        description: "カレンダー同期のための再認証は、hosted.app / web.app などの公開済みドメインでのみ動作します。",
       });
       return;
     }
@@ -188,7 +188,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                Google ログインを伴うカレンダー同期は、セキュリティ制限のためプレビュー環境では動作しません。`firebase deploy` で本番環境に公開してから実行してください。
+                Google ログインを伴うカレンダー同期は、セキュリティ制限のためプレビュー環境では動作しません。`firebase deploy` で本番環境（*.hosted.app）に公開してから実行してください。
               </p>
             </div>
           </div>

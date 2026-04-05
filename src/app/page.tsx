@@ -31,7 +31,7 @@ export default function LandingPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hostname = window.location.hostname;
-      // プレビュー環境の判定
+      // プレビュー環境（Google認証が制限される環境）の厳密な判定
       const isStudioPreview = 
         hostname.includes("cloudworkstations.dev") || 
         hostname === "studio.firebase.google.com";
@@ -52,7 +52,7 @@ export default function LandingPage() {
         toast({
           variant: "destructive",
           title: "未承認のドメインです",
-          description: "Firebase Consoleで現在のドメインを承認済みドメインに追加してください。",
+          description: "Firebase Consoleの「承認済みドメイン」にこのドメインを追加してください。",
         });
       }
     });
@@ -69,7 +69,7 @@ export default function LandingPage() {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "Googleログインは、firebase deploy 後の本番ドメイン（hosted.app / web.app）でのみ動作します。",
+        description: "Googleログインは、hosted.app / web.app などの公開済みドメイン、またはlocalhostでのみ動作します。",
       });
       return;
     }
@@ -112,7 +112,7 @@ export default function LandingPage() {
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                Google ログインはセキュリティ制限のためプレビュー環境では動作しません。ログインを試すには、`firebase deploy` で本番ドメイン（.hosted.app / .web.app）に公開してください。
+                Google ログインはセキュリティ制限のためプレビュー環境では動作しません。ログインを試すには、`firebase deploy` で本番ドメイン（*.hosted.app / *.web.app）に公開してください。
               </p>
             </div>
           </div>
