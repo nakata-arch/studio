@@ -1,10 +1,10 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
 import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,43 +32,26 @@ export default function SettingsPage() {
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
 
-  useEffect(() => {
-    if (!isUserLoading && !user) router.push("/");
-  }, [user, isUserLoading, router]);
-
-  useEffect(() => {
-    const fetchCounts = async () => {
-      if (!user) return;
-      try {
-        const eventsRef = collection(db, "users", user.uid, "events");
-        const snap = await getDocs(eventsRef);
-        const all = snap.docs.map(d => d.data() as AppEvent);
-        
-        setCounts({
-          report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
-          classify: all.filter(e => !e.quadrantCategory).length
-        });
-      } catch (e) {
-        console.error("Count fetch failed", e);
-      }
-    };
-    if (user) fetchCounts();
+  const fetchCounts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const eventsRef = collection(db, "users", user.uid, "events");
+      const snap = await getDocs(eventsRef);
+      const all = snap.docs.map(d => d.data() as AppEvent);
+      
+      setCounts({
+        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
+        classify: all.filter(e => !e.quadrantCategory).length
+      });
+    } catch (e) {
+      console.error("Count fetch failed", e);
+    }
   }, [user, db]);
 
-  const handleSync = async () => {
+  const processSync = useCallback(async (accessToken: string) => {
     if (!user) return;
-    setSyncStatus('syncing');
-    setErrorDetails(null);
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-
+    setSyncStatus('saving');
     try {
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const accessToken = credential?.accessToken;
-
-      if (!accessToken) throw new Error("認証に失敗しました。アクセストークンが取得できません。");
-
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=100&singleEvents=true&orderBy=startTime`,
@@ -87,7 +70,6 @@ export default function SettingsPage() {
         throw new Error(`APIエラー: ${errorMsg}`);
       }
 
-      setSyncStatus('saving');
       const items = body.items || [];
       const now = Date.now();
       
@@ -115,27 +97,49 @@ export default function SettingsPage() {
 
       setSyncStatus('success');
       toast({ title: "整いました", description: `${items.length}件の予定を同期しました。` });
-      
-      // 更新後のカウント取得
-      const eventsRef = collection(db, "users", user.uid, "events");
-      const snap = await getDocs(eventsRef);
-      const all = snap.docs.map(d => d.data() as AppEvent);
-      setCounts({
-        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
-        classify: all.filter(e => !e.quadrantCategory).length
-      });
-      
+      fetchCounts();
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        setSyncStatus('idle');
-        return;
-      }
       console.error("Sync Error:", err);
       setSyncStatus('failed');
       setErrorDetails(err.message);
       toast({ variant: "destructive", title: "同期できませんでした", description: err.message });
     }
+  }, [user, db, toast, fetchCounts]);
+
+  useEffect(() => {
+    if (!isUserLoading && !user) router.push("/");
+  }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    if (user) {
+      fetchCounts();
+      // Handle redirect result specifically for syncing (re-authentication)
+      getRedirectResult(auth).then((result) => {
+        if (result) {
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          const accessToken = credential?.accessToken;
+          if (accessToken) {
+            processSync(accessToken);
+          }
+        }
+      }).catch((error) => {
+        console.error("Redirect sync failed:", error);
+      });
+    }
+  }, [user, auth, fetchCounts, processSync]);
+
+  const handleSyncTrigger = () => {
+    if (!user) return;
+    setSyncStatus('syncing');
+    setErrorDetails(null);
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    // Ensure no async/await before calling redirect
+    signInWithRedirect(auth, provider).catch((error) => {
+      console.error("Redirect sync trigger failed:", error);
+      setSyncStatus('failed');
+    });
   };
 
   if (isUserLoading || !user) return null;
@@ -179,7 +183,8 @@ export default function SettingsPage() {
 
         <div className="space-y-3">
           <Button 
-            onClick={handleSync} 
+            type="button"
+            onClick={handleSyncTrigger} 
             disabled={syncStatus === 'syncing' || syncStatus === 'saving'}
             variant="outline" 
             className="w-full h-14 rounded-2xl gap-3 font-medium bg-white/50 border-primary/5 hover:bg-white transition-all shadow-sm"
@@ -190,6 +195,7 @@ export default function SettingsPage() {
 
           {syncStatus === 'failed' && errorDetails?.includes("APIを有効にする") && (
             <Button
+              type="button"
               variant="secondary"
               className="w-full h-12 rounded-xl gap-2 text-xs"
               asChild
@@ -202,6 +208,7 @@ export default function SettingsPage() {
           )}
 
           <Button 
+            type="button"
             onClick={() => auth.signOut()}
             variant="ghost" 
             className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5"

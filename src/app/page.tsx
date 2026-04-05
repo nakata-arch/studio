@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithRedirect, GoogleAuthProvider, getRedirectResult } from "firebase/auth";
 import { useAuth, useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -25,20 +25,25 @@ export default function LandingPage() {
   const { user, isUserLoading } = useUser();
 
   useEffect(() => {
+    // Handle redirect result on mount
+    getRedirectResult(auth).catch((error) => {
+      console.error("Redirect login failed:", error);
+    });
+  }, [auth]);
+
+  useEffect(() => {
     if (!isUserLoading && user) {
       router.push("/report");
     }
   }, [user, isUserLoading, router]);
 
-  const handleLogin = async () => {
+  const handleLogin = () => {
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      if (error.code === 'auth/popup-closed-by-user') return;
-      console.error("Login failed:", error);
-    }
+    // Ensure no async/await before calling redirect to avoid browser blocks
+    signInWithRedirect(auth, provider).catch((error) => {
+      console.error("Redirect login trigger failed:", error);
+    });
   };
 
   const heroImage = PlaceHolderImages.find(img => img.id === "landing-hero");
@@ -68,6 +73,7 @@ export default function LandingPage() {
 
         <div className="w-full max-w-sm space-y-4">
           <Button 
+            type="button"
             onClick={handleLogin} 
             className="w-full h-14 rounded-2xl text-base font-medium gap-3 bg-primary/90 hover:bg-primary shadow-lg shadow-primary/10 transition-all active:scale-95"
           >
@@ -183,6 +189,7 @@ export default function LandingPage() {
 
         <div className="w-full max-w-sm space-y-4">
           <Button 
+            type="button"
             onClick={handleLogin} 
             className="w-full h-14 rounded-2xl text-base font-medium gap-3 bg-primary/90 hover:bg-primary shadow-lg shadow-primary/10 transition-all active:scale-95"
           >
@@ -203,5 +210,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-    
