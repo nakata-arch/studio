@@ -63,10 +63,19 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleUpdate = async (eventId: string, status: ReportStatus, direction: 'left' | 'right' | 'up') => {
+  const handleUpdate = (eventId: string, status: ReportStatus, direction: 'left' | 'right' | 'up') => {
     if (!user) return;
-    setExitDirection(direction);
     
+    const event = events.find(e => e.id === eventId);
+    if (!event) return;
+
+    setExitDirection(direction);
+
+    // 1. 楽観的にUIを更新
+    setEvents(prev => prev.filter(e => e.id !== eventId));
+    setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
+    
+    // 2. 非同期でFirestoreを更新
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -76,10 +85,6 @@ export default function ReportPage() {
     };
 
     updateDoc(eventDoc, updateData)
-      .then(() => {
-        // アニメーションのために少し遅延させる必要はなく、AnimatePresenceが処理します
-        setEvents(prev => prev.filter(e => e.id !== eventId));
-      })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ 
           path: eventDoc.path, 

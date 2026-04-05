@@ -56,19 +56,22 @@ export default function ClassifyPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleClassify = async (category: QuadrantCategory, direction: 'left' | 'right' | 'up' | 'down') => {
+  const handleClassify = (category: QuadrantCategory, direction: 'left' | 'right' | 'up' | 'down') => {
     if (events.length === 0 || !user) return;
-    setExitDirection(direction);
     
     const event = events[0];
+    setExitDirection(direction);
+
+    // 1. 楽観的にUIを更新（次のカードを即座に表示）
+    setEvents(prev => prev.slice(1));
+    setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
+
+    // 2. 非同期でFirestoreを更新
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
-    
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
-      .then(() => {
-        setEvents(prev => prev.slice(1));
-      })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
+        // 必要に応じてロールバック処理を追加
       });
   };
 
@@ -226,7 +229,7 @@ export default function ClassifyPage() {
                     
                     <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
                       <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                        スワイプで整理
+                        スワイプで分類
                       </div>
                     </div>
                   </Card>
