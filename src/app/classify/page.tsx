@@ -3,19 +3,19 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy, where, limit } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
-import { Button } from "@/components/ui/button";
-import { Loader2, Clock, History, LayoutGrid, ArrowRight } from "lucide-react";
+import { Loader2, Clock, History, LayoutGrid, ArrowRight, Sparkles } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { QuotePopup } from "@/components/QuotePopup";
 import Link from "next/link";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 
 export default function ClassifyPage() {
   const db = useFirestore();
@@ -23,30 +23,19 @@ export default function ClassifyPage() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [recentClassified, setRecentClassified] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [exitDirection, setExitDirection] = useState<QuadrantCategory | null>(null);
 
   const fetchEvents = async () => {
     if (!user) return;
     const eventsRef = collection(db, "users", user.uid, "events");
 
     try {
-      // 未分類の抽出
-      const qUnclassified = query(eventsRef, orderBy("startAt", "asc"));
-      const snapUnclassified = await getDocs(qUnclassified);
-      const all = snapUnclassified.docs.map(d => d.data() as AppEvent);
+      const qAll = query(eventsRef, orderBy("startAt", "asc"));
+      const snapAll = await getDocs(qAll);
+      const all = snapAll.docs.map(d => d.data() as AppEvent);
+      
       setEvents(all.filter(ev => !ev.quadrantCategory));
 
-      // 最近分類したものを取得 (30件に制限してパフォーマンスを維持)
-      const qClassified = query(
-        eventsRef, 
-        where("quadrantCategory", "!=", null), 
-        orderBy("quadrantCategory"), //複合インデックス対策のため必要になる場合があります
-        orderBy("updatedAt", "desc"), 
-        limit(30)
-      );
-      // 注意: Firestoreの制約により、!= 演算子を使用するとそのフィールドでまずソートされます。
-      // ここではシンプルにするため、再度全取得からフィルタリングするか、インデックスを前提としたクエリにします。
-      // パフォーマンス重視でフィルタリング方式にします。
       const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(50));
       const snapRecent = await getDocs(qRecent);
       setRecentClassified(
@@ -68,12 +57,13 @@ export default function ClassifyPage() {
   }, [user, isUserLoading, db]);
 
   const handleClassify = async (category: QuadrantCategory) => {
-    if (!events[currentIndex] || !user) return;
-    const event = events[currentIndex];
+    if (events.length === 0 || !user) return;
+    const event = events[0];
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
     
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .then(() => {
+        setEvents(prev => prev.slice(1));
         fetchEvents();
       })
       .catch(err => {
@@ -81,15 +71,39 @@ export default function ClassifyPage() {
       });
   };
 
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotate = useTransform(x, [-200, 200], [-25, 25]);
+  const opacity = useTransform(
+    [x, y],
+    ([latestX, latestY]) => {
+      const dist = Math.sqrt(Number(latestX) ** 2 + Number(latestY) ** 2);
+      return Math.max(1 - dist / 500, 0.5);
+    }
+  );
+
+  const handleDragEnd = (event: any, info: any) => {
+    const threshold = 100;
+    if (info.offset.y < -threshold) {
+      handleClassify('not_urgent_important');
+    } else if (info.offset.x > threshold) {
+      handleClassify('urgent_important');
+    } else if (info.offset.x < -threshold) {
+      handleClassify('urgent_not_important');
+    } else if (info.offset.y > threshold) {
+      handleClassify('not_urgent_not_important');
+    }
+  };
+
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
 
-  const current = events[currentIndex];
+  const current = events[0];
 
   return (
-    <div className="flex flex-col min-h-screen bg-background pb-48">
+    <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
       
-      <main className="flex-1 px-8 flex flex-col items-center pt-24">
+      <main className="flex-1 px-8 flex flex-col items-center pt-24 relative">
         {events.length === 0 ? (
           <div className="w-full max-w-sm space-y-10 animate-in fade-in duration-700">
             <div className="text-center space-y-4 opacity-60 pt-10">
@@ -137,43 +151,83 @@ export default function ClassifyPage() {
             )}
           </div>
         ) : (
-          <div className="w-full max-w-sm space-y-4">
-            <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] text-center">
-              Pending Classification: {events.length}
+          <div className="w-full max-w-sm h-full flex flex-col items-center">
+            <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
+              Swipe to Classify: {events.length}
             </div>
-            <Card className="w-full border-none shadow-xl bg-white relative overflow-hidden rounded-[2.5rem]">
-               <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10" />
-               <CardContent className="p-8 space-y-6">
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">{current.calendarName}</span>
-                  <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-3">{current.title}</h2>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground opacity-60 font-medium">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  {format(parseISO(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
-                </div>
-              </CardContent>
-            </Card>
+
+            <div className="relative w-full aspect-[3/4] flex items-center justify-center">
+              {/* Swipe Hints */}
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <span className="text-xl">✨</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-500">Important</span>
+              </div>
+              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <span className="text-xl">☁️</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Waste</span>
+              </div>
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <span className="text-xl">🚨</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">Urgent</span>
+              </div>
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <span className="text-xl">⏳</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-amber-500">Deception</span>
+              </div>
+
+              <AnimatePresence mode="popLayout">
+                <motion.div
+                  key={current.id}
+                  style={{ x, y, rotate, opacity }}
+                  drag
+                  dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                  onDragEnd={handleDragEnd}
+                  whileDrag={{ scale: 1.05 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                >
+                  <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10" />
+                    <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary/20" />
+                          <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">
+                            {current.calendarName}
+                          </span>
+                        </div>
+                        <h2 className="text-2xl font-headline leading-tight text-foreground/80 break-words line-clamp-4">
+                          {current.title}
+                        </h2>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div className="h-px w-12 bg-primary/10" />
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                          <Clock className="h-4 w-4 shrink-0" />
+                          {format(parseISO(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
+                        </div>
+                      </div>
+
+                      {current.description && (
+                        <p className="text-[11px] text-muted-foreground/60 leading-relaxed italic line-clamp-3">
+                          {current.description}
+                        </p>
+                      )}
+                    </CardContent>
+                    
+                    <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
+                      <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
+                        Swipe to organize
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         )}
       </main>
-
-      {current && (
-        <div className="fixed bottom-28 left-0 right-0 px-8 max-w-md mx-auto z-40">
-           <div className="grid grid-cols-2 gap-3">
-             {(Object.entries(QUADRANTS) as [QuadrantCategory, typeof QUADRANTS.urgent_important][]).map(([key, config]) => (
-               <Button
-                key={key}
-                onClick={() => handleClassify(key)}
-                className={`${config.color} ${config.hover} h-16 rounded-2xl flex flex-col gap-1 items-center justify-center border-none transition-all active:scale-95 shadow-sm group`}
-               >
-                 <span className="text-lg group-active:scale-125 transition-transform">{config.icon}</span>
-                 <span className="text-[9px] font-bold tracking-tight opacity-90">{config.label}</span>
-               </Button>
-             ))}
-           </div>
-        </div>
-      )}
 
       <Navigation />
     </div>

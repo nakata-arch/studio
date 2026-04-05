@@ -3,21 +3,20 @@
 
 import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, query, getDocs, doc, updateDoc, orderBy, where, limit } from "firebase/firestore";
+import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check, X, Ban, Loader2, Clock, Calendar as CalendarIcon, History, ArrowRight } from "lucide-react";
 import { format, isBefore, endOfToday, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
 import { QuotePopup } from "@/components/QuotePopup";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 
 export default function ReportPage() {
   const db = useFirestore();
@@ -33,11 +32,10 @@ export default function ReportPage() {
     
     try {
       const today = endOfToday();
+      const qAll = query(eventsRef, orderBy("startAt", "desc"));
+      const snapAll = await getDocs(qAll);
+      const all = snapAll.docs.map(d => d.data() as AppEvent);
       
-      // 未報告の取得
-      const qUnreported = query(eventsRef, orderBy("startAt", "desc"));
-      const snapUnreported = await getDocs(qUnreported);
-      const all = snapUnreported.docs.map(d => d.data() as AppEvent);
       const filtered = all.filter(ev => !ev.reportStatus && isBefore(parseISO(ev.startAt), today));
       setEvents(filtered);
       
@@ -45,8 +43,6 @@ export default function ReportPage() {
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
 
-      // 直近の報告済みを取得
-      // 複合クエリのインデックスエラーを避けるため、シンプルなクエリで取得してクライアント側でフィルタリング
       const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
       const snapRecent = await getDocs(qRecent);
       setRecentEvents(
@@ -78,6 +74,7 @@ export default function ReportPage() {
 
     updateDoc(eventDoc, updateData)
       .then(() => {
+        setEvents(prev => prev.filter(e => e.id !== eventId));
         fetchEvents();
       })
       .catch(err => {
@@ -89,10 +86,48 @@ export default function ReportPage() {
       });
   };
 
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotate = useTransform(x, [-200, 200], [-25, 25]);
+  const opacity = useTransform(
+    [x, y],
+    ([latestX, latestY]) => {
+      const dist = Math.sqrt(Number(latestX) ** 2 + Number(latestY) ** 2);
+      return Math.max(1 - dist / 500, 0.5);
+    }
+  );
+
+  const cardBackground = useTransform(
+    [x, y],
+    ([latestX, latestY]) => {
+      const threshold = 50;
+      if (Number(latestX) > threshold) return "rgba(16, 185, 129, 0.1)"; // emerald
+      if (Number(latestX) < -threshold) return "rgba(244, 63, 94, 0.1)"; // rose
+      if (Number(latestY) < -threshold) return "rgba(100, 116, 139, 0.1)"; // slate
+      return "rgba(255, 255, 255, 1)";
+    }
+  );
+
+  const handleDragEnd = (event: any, info: any) => {
+    if (events.length === 0) return;
+    const threshold = 100;
+    const currentEvent = events[0];
+    
+    if (info.offset.x > threshold) {
+      handleUpdate(currentEvent.id, 'done');
+    } else if (info.offset.x < -threshold) {
+      handleUpdate(currentEvent.id, 'failed');
+    } else if (info.offset.y < -threshold) {
+      handleUpdate(currentEvent.id, 'cancelled');
+    }
+  };
+
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
 
+  const current = events[0];
+
   return (
-    <div className="flex flex-col min-h-screen bg-background pb-32">
+    <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
       
       <main className="flex-1 px-8 flex flex-col items-center pt-16">
@@ -144,57 +179,73 @@ export default function ReportPage() {
             )}
           </div>
         ) : (
-          <div className="w-full max-w-sm space-y-6">
-            <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] text-center">
-              Pending Reports: {events.length}
+          <div className="w-full max-w-sm h-full flex flex-col items-center">
+            <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
+              Swipe to Report: {events.length}
             </div>
-            <Carousel className="w-full">
-              <CarouselContent>
-                {events.map((event) => (
-                  <CarouselItem key={event.id}>
-                    <Card className="border-none shadow-xl bg-white mx-1 rounded-[2.5rem] overflow-hidden">
-                      <CardContent className="p-8 space-y-6">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
-                            <CalendarIcon className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{event.calendarName}</span>
-                          </div>
-                          <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-2">{event.title}</h2>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
-                            <Clock className="h-3.5 w-3.5 shrink-0" />
-                            {format(parseISO(event.startAt), "M月d日(E) HH:mm", { locale: ja })}
-                          </div>
-                        </div>
 
-                        <div className="space-y-3">
-                          <Textarea 
-                            placeholder="どんな時間でしたか？" 
-                            value={memo[event.id] || ""} 
-                            onChange={(e) => setMemo({ ...memo, [event.id]: e.target.value })}
-                            className="text-sm min-h-[100px] bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
-                          />
+            <div className="relative w-full aspect-[3/4] flex items-center justify-center">
+              {/* Swipe Hints */}
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <Ban className="h-5 w-5 text-slate-400" />
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Cancel</span>
+              </div>
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <Check className="h-5 w-5 text-emerald-400" />
+                <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">Done</span>
+              </div>
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <X className="h-5 w-5 text-rose-400" />
+                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">Failed</span>
+              </div>
+
+              <AnimatePresence mode="popLayout">
+                <motion.div
+                  key={current.id}
+                  style={{ x, y, rotate, opacity, backgroundColor: cardBackground }}
+                  drag
+                  dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                  onDragEnd={handleDragEnd}
+                  whileDrag={{ scale: 1.05 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                >
+                  <Card className="w-full h-full border-none shadow-2xl bg-inherit relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                    <CardContent className="p-8 flex-1 flex flex-col space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
+                          <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{current.calendarName}</span>
                         </div>
-                        
-                        <div className="grid grid-cols-3 gap-2">
-                          <Button variant="outline" className="flex-col h-16 rounded-2xl border-none bg-primary/[0.03] hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 px-1 group" onClick={() => handleUpdate(event.id, 'done')}>
-                            <Check className="h-4 w-4 mb-1 opacity-40 group-hover:opacity-100" />
-                            <span className="text-[9px] font-bold">できた</span>
-                          </Button>
-                          <Button variant="outline" className="flex-col h-16 rounded-2xl border-none bg-primary/[0.03] hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 px-1 group" onClick={() => handleUpdate(event.id, 'failed')}>
-                            <X className="h-4 w-4 mb-1 opacity-40 group-hover:opacity-100" />
-                            <span className="text-[9px] font-bold">未達</span>
-                          </Button>
-                          <Button variant="outline" className="flex-col h-16 rounded-2xl border-none bg-primary/[0.03] hover:bg-slate-50 hover:text-slate-700 transition-all active:scale-95 px-1 group" onClick={() => handleUpdate(event.id, 'cancelled')}>
-                            <Ban className="h-4 w-4 mb-1 opacity-40 group-hover:opacity-100" />
-                            <span className="text-[9px] font-bold">中止</span>
-                          </Button>
+                        <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-2">
+                          {current.title}
+                        </h2>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                          <Clock className="h-4 w-4 shrink-0" />
+                          {format(parseISO(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
                         </div>
-                      </CardContent>
-                    </Card>
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
+                      </div>
+
+                      <div className="flex-1 flex flex-col space-y-3">
+                        <Textarea 
+                          placeholder="どんな時間でしたか？" 
+                          value={memo[current.id] || ""} 
+                          onChange={(e) => setMemo({ ...memo, [current.id]: e.target.value })}
+                          onPointerDown={(e) => e.stopPropagation()} // Prevent drag when focusing textarea
+                          className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
+                        />
+                      </div>
+                      
+                      <div className="pt-4 flex justify-center">
+                        <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
+                          Swipe left, right or up
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         )}
       </main>
