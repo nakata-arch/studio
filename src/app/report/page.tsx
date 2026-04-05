@@ -40,6 +40,8 @@ export default function ReportPage() {
       const filtered = all.filter(ev => !ev.reportStatus && isBefore(parseISO(ev.startAt), today));
       setEvents(filtered);
       
+      console.log('ReportPage: Unreported events loaded', filtered.length);
+
       const initial: Record<string, string> = {};
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
@@ -69,13 +71,19 @@ export default function ReportPage() {
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
+    console.log('ReportPage: Reporting event', eventId, 'as', status);
+
     setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 配列から削除して次のカードを前面に出す
-    setEvents(prev => prev.filter(e => e.id !== eventId));
+    // 楽観的UI更新: 配列の先頭を削除
+    setEvents(prev => {
+      const next = prev.filter(e => e.id !== eventId);
+      console.log('ReportPage: Remaining events', next.length);
+      return next;
+    });
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
-    // 非同期更新
+    // 非同期でDB更新
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -94,7 +102,9 @@ export default function ReportPage() {
       });
   };
 
-  // Tinderアニメーション用のHooks
+  // --------------------------------------------------------------------------
+  // ドラッグ制御用フック
+  // --------------------------------------------------------------------------
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -109,8 +119,8 @@ export default function ReportPage() {
     const ly = Number(latestY);
     if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
     if (ly < -80) return "中止";
-    if (lx < -80) return "できた"; // 左スワイプ: できた
-    if (lx > 80) return "未達";   // 右スワイプ: 未達
+    if (lx < -80) return "できた"; // 左: できた
+    if (lx > 80) return "未達";   // 右: 未達
     return "";
   });
 
@@ -125,7 +135,7 @@ export default function ReportPage() {
 
   const handleDragEnd = (_: any, info: any) => {
     if (events.length === 0) return;
-    const threshold = 100;
+    const threshold = 80;
     const currentEvent = events[0];
     const { x: ox, y: oy } = info.offset;
     
@@ -143,7 +153,7 @@ export default function ReportPage() {
       handleUpdate(currentEvent.id, 'failed', 1000, 0);
     }
 
-    // スワイプ後はリセット
+    // 値をリセット
     x.set(0);
     y.set(0);
   };
@@ -157,7 +167,7 @@ export default function ReportPage() {
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
       
-      <main className="flex-1 px-8 flex flex-col items-center pt-16">
+      <main className="flex-1 px-8 flex flex-col items-center pt-16 relative">
         {!currentEvent ? (
           <div className="w-full max-w-sm space-y-10 animate-in fade-in duration-700">
             <div className="text-center space-y-4 opacity-60 pt-10">
@@ -206,27 +216,27 @@ export default function ReportPage() {
             )}
           </div>
         ) : (
-          <div className="w-full max-w-sm h-full flex flex-col items-center">
+          <div className="w-full max-w-sm h-full flex flex-col items-center relative">
             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
               スワイプで報告: {events.length}
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* Swipe Hints */}
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 z-0">
+              {/* スワイプ方向のガイドラベル（背景に表示） */}
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-10 pointer-events-none">
                 <Ban className="h-5 w-5 text-slate-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
               </div>
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 z-0">
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-10 pointer-events-none">
                 <Check className="h-5 w-5 text-emerald-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">できた</span>
               </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 z-0">
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-10 pointer-events-none">
                 <X className="h-5 w-5 text-rose-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">未達</span>
               </div>
 
-              {/* Back Card (Next) */}
+              {/* 2枚目: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -250,11 +260,11 @@ export default function ReportPage() {
                 </div>
               )}
 
-              {/* Front Card (Current) */}
+              {/* 1枚目: 操作可能カード */}
               <AnimatePresence mode="popLayout">
                 <motion.div
                   key={currentEvent.id}
-                  style={{ x, y, rotate, zIndex: 10 }}
+                  style={{ x, y, rotate, zIndex: 10, position: 'absolute', width: '100%', height: '100%' }}
                   drag
                   dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                   onDragEnd={handleDragEnd}
@@ -263,13 +273,14 @@ export default function ReportPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
+                    pointerEvents: 'none', // 退場中に背面カードの操作を邪魔しない
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing"
                 >
                   <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                     <CardContent className="p-8 flex-1 flex flex-col space-y-6">

@@ -34,7 +34,10 @@ export default function ClassifyPage() {
       const snapAll = await getDocs(qAll);
       const all = snapAll.docs.map(d => d.data() as AppEvent);
       
-      setEvents(all.filter(ev => !ev.quadrantCategory));
+      const unclassified = all.filter(ev => !ev.quadrantCategory);
+      setEvents(unclassified);
+
+      console.log('ClassifyPage: Initial events loaded', unclassified.length);
 
       const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
       const snapRecent = await getDocs(qRecent);
@@ -59,13 +62,19 @@ export default function ClassifyPage() {
     if (events.length === 0 || !user) return;
     
     const event = events[0];
+    console.log('ClassifyPage: Swiping event', event.id, 'Direction', xDir, yDir);
+
     setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 配列から削除して次のカードを前面に出す
-    setEvents(prev => prev.slice(1));
+    // 楽観的UI更新: 配列の先頭を削除して次を昇格させる
+    setEvents(prev => {
+      const next = prev.slice(1);
+      console.log('ClassifyPage: Remaining events', next.length);
+      return next;
+    });
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
 
-    // 非同期更新
+    // 非同期でDB更新
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .catch(err => {
@@ -73,7 +82,9 @@ export default function ClassifyPage() {
       });
   };
 
-  // Tinderアニメーション用のHooks
+  // --------------------------------------------------------------------------
+  // ドラッグ制御用フック
+  // --------------------------------------------------------------------------
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -106,7 +117,7 @@ export default function ClassifyPage() {
   });
 
   const handleDragEnd = (_: any, info: any) => {
-    const threshold = 100;
+    const threshold = 80;
     const { x: ox, y: oy } = info.offset;
     
     if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) {
@@ -120,7 +131,7 @@ export default function ClassifyPage() {
     else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
     else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
     
-    // スワイプ後はリセット
+    // 値をリセット
     x.set(0);
     y.set(0);
   };
@@ -170,7 +181,7 @@ export default function ClassifyPage() {
                           </div>
                         </div>
                         {ev.quadrantCategory && (
-                          <div className="w-8 h-8 bg-primary/[0.03] rounded-lg flex items-center justify-center shrink-0" title={QUADRANTS[ev.quadrantCategory]?.label}>
+                          <div className="w-8 h-8 bg-primary/[0.03] rounded-lg flex items-center justify-center shrink-0">
                             <span className="text-sm">{QUADRANTS[ev.quadrantCategory]?.icon}</span>
                           </div>
                         )}
@@ -182,27 +193,27 @@ export default function ClassifyPage() {
             )}
           </div>
         ) : (
-          <div className="w-full max-w-sm h-full flex flex-col items-center">
+          <div className="w-full max-w-sm h-full flex flex-col items-center relative">
             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
               斜めスワイプで分類: {events.length}
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* Swipe Hints */}
-              <div className="absolute -left-4 -top-8 flex flex-col items-start opacity-20 z-0">
+              {/* スワイプ方向のガイドラベル（背景に表示） */}
+              <div className="absolute -left-4 -top-8 flex flex-col items-start opacity-10 pointer-events-none">
                 <span className="text-xs font-bold text-rose-500 uppercase tracking-widest">↖ 重要・緊急</span>
               </div>
-              <div className="absolute -right-4 -top-8 flex flex-col items-end opacity-20 z-0">
+              <div className="absolute -right-4 -top-8 flex flex-col items-end opacity-10 pointer-events-none">
                 <span className="text-xs font-bold text-indigo-500 uppercase tracking-widest">重要 ↗</span>
               </div>
-              <div className="absolute -left-4 -bottom-8 flex flex-col items-start opacity-20 z-0">
+              <div className="absolute -left-4 -bottom-8 flex flex-col items-start opacity-10 pointer-events-none">
                 <span className="text-xs font-bold text-amber-500 uppercase tracking-widest">↙ 緊急</span>
               </div>
-              <div className="absolute -right-4 -bottom-8 flex flex-col items-end opacity-20 z-0">
+              <div className="absolute -right-4 -bottom-8 flex flex-col items-end opacity-10 pointer-events-none">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">低優先 ↘</span>
               </div>
 
-              {/* Back Card (Next) */}
+              {/* 2枚目: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -225,11 +236,11 @@ export default function ClassifyPage() {
                 </div>
               )}
 
-              {/* Front Card (Current) */}
+              {/* 1枚目: 操作可能カード */}
               <AnimatePresence mode="popLayout">
                 <motion.div
                   key={currentEvent.id}
-                  style={{ x, y, rotate, zIndex: 10 }}
+                  style={{ x, y, rotate, zIndex: 10, position: 'absolute', width: '100%', height: '100%' }}
                   drag
                   dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                   onDragEnd={handleDragEnd}
@@ -238,13 +249,14 @@ export default function ClassifyPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
+                    pointerEvents: 'none', // 退場中に背面カードの操作を邪魔しない
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing"
                 >
                   <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                     <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
