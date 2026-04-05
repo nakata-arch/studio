@@ -25,6 +25,7 @@ export default function ReportPage() {
   const [recentEvents, setRecentEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState<Record<string, string>>({});
+  const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | null>(null);
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -62,8 +63,10 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleUpdate = async (eventId: string, status: ReportStatus) => {
+  const handleUpdate = async (eventId: string, status: ReportStatus, direction: 'left' | 'right' | 'up') => {
     if (!user) return;
+    setExitDirection(direction);
+    
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -74,8 +77,8 @@ export default function ReportPage() {
 
     updateDoc(eventDoc, updateData)
       .then(() => {
+        // アニメーションのために少し遅延させる必要はなく、AnimatePresenceが処理します
         setEvents(prev => prev.filter(e => e.id !== eventId));
-        fetchEvents();
       })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ 
@@ -101,9 +104,9 @@ export default function ReportPage() {
     [x, y],
     ([latestX, latestY]) => {
       const threshold = 50;
-      if (Number(latestX) > threshold) return "rgba(16, 185, 129, 0.1)"; // emerald
-      if (Number(latestX) < -threshold) return "rgba(244, 63, 94, 0.1)"; // rose
-      if (Number(latestY) < -threshold) return "rgba(100, 116, 139, 0.1)"; // slate
+      if (Number(latestX) < -threshold) return "rgba(16, 185, 129, 0.1)"; // できた (emerald)
+      if (Number(latestX) > threshold) return "rgba(244, 63, 94, 0.1)"; // 未達 (rose)
+      if (Number(latestY) < -threshold) return "rgba(100, 116, 139, 0.1)"; // 中止 (slate)
       return "rgba(255, 255, 255, 1)";
     }
   );
@@ -113,12 +116,12 @@ export default function ReportPage() {
     const threshold = 100;
     const currentEvent = events[0];
     
-    if (info.offset.x > threshold) {
-      handleUpdate(currentEvent.id, 'done');
-    } else if (info.offset.x < -threshold) {
-      handleUpdate(currentEvent.id, 'failed');
+    if (info.offset.x < -threshold) {
+      handleUpdate(currentEvent.id, 'done', 'left');
+    } else if (info.offset.x > threshold) {
+      handleUpdate(currentEvent.id, 'failed', 'right');
     } else if (info.offset.y < -threshold) {
-      handleUpdate(currentEvent.id, 'cancelled');
+      handleUpdate(currentEvent.id, 'cancelled', 'up');
     }
   };
 
@@ -181,22 +184,22 @@ export default function ReportPage() {
         ) : (
           <div className="w-full max-w-sm h-full flex flex-col items-center">
             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
-              Swipe to Report: {events.length}
+              スワイプで報告: {events.length}
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
               {/* Swipe Hints */}
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
                 <Ban className="h-5 w-5 text-slate-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Cancel</span>
-              </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
-                <Check className="h-5 w-5 text-emerald-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">Done</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
               </div>
               <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+                <Check className="h-5 w-5 text-emerald-400" />
+                <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">できた</span>
+              </div>
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
                 <X className="h-5 w-5 text-rose-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">Failed</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">未達</span>
               </div>
 
               <AnimatePresence mode="popLayout">
@@ -206,6 +209,13 @@ export default function ReportPage() {
                   drag
                   dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                   onDragEnd={handleDragEnd}
+                  exit={{ 
+                    x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
+                    y: exitDirection === 'up' ? -1000 : 0,
+                    opacity: 0,
+                    scale: 0.5,
+                    transition: { duration: 0.4 }
+                  }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   className="absolute w-full h-full cursor-grab active:cursor-grabbing"
@@ -231,14 +241,14 @@ export default function ReportPage() {
                           placeholder="どんな時間でしたか？" 
                           value={memo[current.id] || ""} 
                           onChange={(e) => setMemo({ ...memo, [current.id]: e.target.value })}
-                          onPointerDown={(e) => e.stopPropagation()} // Prevent drag when focusing textarea
+                          onPointerDown={(e) => e.stopPropagation()} 
                           className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
                         />
                       </div>
                       
                       <div className="pt-4 flex justify-center">
                         <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                          Swipe left, right or up
+                          左右または上へスワイプ
                         </div>
                       </div>
                     </CardContent>

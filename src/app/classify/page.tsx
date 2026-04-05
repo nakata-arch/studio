@@ -23,7 +23,7 @@ export default function ClassifyPage() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [recentClassified, setRecentClassified] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exitDirection, setExitDirection] = useState<QuadrantCategory | null>(null);
+  const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | 'down' | null>(null);
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -36,7 +36,7 @@ export default function ClassifyPage() {
       
       setEvents(all.filter(ev => !ev.quadrantCategory));
 
-      const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(50));
+      const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
       const snapRecent = await getDocs(qRecent);
       setRecentClassified(
         snapRecent.docs
@@ -56,15 +56,16 @@ export default function ClassifyPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleClassify = async (category: QuadrantCategory) => {
+  const handleClassify = async (category: QuadrantCategory, direction: 'left' | 'right' | 'up' | 'down') => {
     if (events.length === 0 || !user) return;
+    setExitDirection(direction);
+    
     const event = events[0];
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
     
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .then(() => {
         setEvents(prev => prev.slice(1));
-        fetchEvents();
       })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
@@ -84,14 +85,14 @@ export default function ClassifyPage() {
 
   const handleDragEnd = (event: any, info: any) => {
     const threshold = 100;
-    if (info.offset.y < -threshold) {
-      handleClassify('not_urgent_important');
+    if (info.offset.x < -threshold) {
+      handleClassify('urgent_important', 'left');
     } else if (info.offset.x > threshold) {
-      handleClassify('urgent_important');
-    } else if (info.offset.x < -threshold) {
-      handleClassify('urgent_not_important');
+      handleClassify('not_urgent_important', 'right');
+    } else if (info.offset.y < -threshold) {
+      handleClassify('urgent_not_important', 'up');
     } else if (info.offset.y > threshold) {
-      handleClassify('not_urgent_not_important');
+      handleClassify('not_urgent_not_important', 'down');
     }
   };
 
@@ -153,26 +154,26 @@ export default function ClassifyPage() {
         ) : (
           <div className="w-full max-w-sm h-full flex flex-col items-center">
             <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em] mb-12">
-              Swipe to Classify: {events.length}
+              スワイプで分類: {events.length}
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
               {/* Swipe Hints */}
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
-                <span className="text-xl">✨</span>
-                <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-500">Important</span>
-              </div>
-              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
-                <span className="text-xl">☁️</span>
-                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Waste</span>
-              </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
                 <span className="text-xl">🚨</span>
-                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">Urgent</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">緊急・重要</span>
               </div>
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+                <span className="text-xl">✨</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-500">重要・非緊急</span>
+              </div>
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
                 <span className="text-xl">⏳</span>
-                <span className="text-[8px] font-bold uppercase tracking-widest text-amber-500">Deception</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-amber-500">緊急・非重要</span>
+              </div>
+              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+                <span className="text-xl">☁️</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">非重要・非緊急</span>
               </div>
 
               <AnimatePresence mode="popLayout">
@@ -182,6 +183,13 @@ export default function ClassifyPage() {
                   drag
                   dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                   onDragEnd={handleDragEnd}
+                  exit={{ 
+                    x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
+                    y: exitDirection === 'up' ? -1000 : exitDirection === 'down' ? 1000 : 0,
+                    opacity: 0,
+                    scale: 0.5,
+                    transition: { duration: 0.4 }
+                  }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                   className="absolute w-full h-full cursor-grab active:cursor-grabbing"
@@ -218,7 +226,7 @@ export default function ClassifyPage() {
                     
                     <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
                       <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                        Swipe to organize
+                        スワイプで整理
                       </div>
                     </div>
                   </Card>
