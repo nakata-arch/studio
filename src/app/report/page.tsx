@@ -75,35 +75,6 @@ export default function ReportPage() {
     }
   }, [events]);
 
-  const handleUpdate = (eventId: string, status: ReportStatus, xDir: number, yDir: number) => {
-    if (!user || !currentEvent) return;
-    
-    const event = currentEvent;
-    setExitDirection({ x: xDir, y: yDir });
-
-    // UIを即座に進める（配列の先頭を削除）
-    setEvents(prev => prev.slice(1));
-    setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
-    
-    // 非同期でDB更新
-    const eventDoc = doc(db, "users", user.uid, "events", eventId);
-    const updateData = { 
-      reportStatus: status, 
-      reportMemo: memo[eventId] || "", 
-      isReported: true, 
-      updatedAt: Date.now() 
-    };
-
-    updateDoc(eventDoc, updateData)
-      .catch(err => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ 
-          path: eventDoc.path, 
-          operation: 'update',
-          requestResourceData: updateData
-        }));
-      });
-  };
-
   // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -133,6 +104,39 @@ export default function ReportPage() {
     return "transparent";
   });
 
+  const handleUpdate = (eventId: string, status: ReportStatus, xDir: number, yDir: number) => {
+    if (!user || !currentEvent) return;
+    
+    // 次のカードのためにMotionValueを即座にリセット
+    x.set(0);
+    y.set(0);
+
+    const event = currentEvent;
+    setExitDirection({ x: xDir, y: yDir });
+
+    // UIを即座に進める
+    setEvents(prev => prev.slice(1));
+    setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
+    
+    // 非同期でDB更新
+    const eventDoc = doc(db, "users", user.uid, "events", eventId);
+    const updateData = { 
+      reportStatus: status, 
+      reportMemo: memo[eventId] || "", 
+      isReported: true, 
+      updatedAt: Date.now() 
+    };
+
+    updateDoc(eventDoc, updateData)
+      .catch(err => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ 
+          path: eventDoc.path, 
+          operation: 'update',
+          requestResourceData: updateData
+        }));
+      });
+  };
+
   const handleDragEnd = (_: any, info: any) => {
     if (!currentEvent) return;
     const threshold = 80;
@@ -151,9 +155,6 @@ export default function ReportPage() {
     } else if (ox > threshold) {
       handleUpdate(currentEvent.id, 'failed', 1000, 0);
     }
-
-    x.set(0);
-    y.set(0);
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
@@ -217,21 +218,7 @@ export default function ReportPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* ガイドラベル */}
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-10 pointer-events-none">
-                <Ban className="h-5 w-5 text-slate-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
-              </div>
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-10 pointer-events-none">
-                <Check className="h-5 w-5 text-emerald-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">できた</span>
-              </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-10 pointer-events-none">
-                <X className="h-5 w-5 text-rose-400" />
-                <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">未達</span>
-              </div>
-
-              {/* 2枚目: プレビュー（操作不可） */}
+              {/* 背面: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -255,8 +242,8 @@ export default function ReportPage() {
                 </div>
               )}
 
-              {/* 1枚目: 操作可能カード */}
-              <AnimatePresence mode="popLayout">
+              {/* 前面: 操作可能カード */}
+              <AnimatePresence initial={false}>
                 <motion.div
                   key={currentEvent.id}
                   style={{ x, y, rotate, zIndex: 10, position: 'absolute', width: '100%', height: '100%' }}
@@ -268,7 +255,7 @@ export default function ReportPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 退場中に背面カードの操作を遮らない
+                    pointerEvents: 'none', // 退場アニメーション中、背後のカードをブロックしないようにする
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useFirestore, useUser } from "@/firebase";
 import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
@@ -68,24 +68,6 @@ export default function ClassifyPage() {
     }
   }, [events]);
 
-  const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
-    if (!currentEvent || !user) return;
-    
-    const event = currentEvent;
-    setExitDirection({ x: xDir, y: yDir });
-
-    // UIを即座に進める（配列の先頭を削除）
-    setEvents(prev => prev.slice(1));
-    setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
-
-    // 非同期でDB更新
-    const eventDoc = doc(db, "users", user.uid, "events", event.id);
-    updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
-      .catch(err => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
-      });
-  };
-
   // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -117,7 +99,30 @@ export default function ClassifyPage() {
     return "transparent";
   });
 
+  const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
+    if (!currentEvent || !user) return;
+    
+    // 次のカードのためにMotionValueを即座にリセット
+    x.set(0);
+    y.set(0);
+
+    const event = currentEvent;
+    setExitDirection({ x: xDir, y: yDir });
+
+    // UIを即座に進める
+    setEvents(prev => prev.slice(1));
+    setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
+
+    // 非同期でDB更新
+    const eventDoc = doc(db, "users", user.uid, "events", event.id);
+    updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
+      .catch(err => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
+      });
+  };
+
   const handleDragEnd = (_: any, info: any) => {
+    if (!currentEvent) return;
     const threshold = 80;
     const { x: ox, y: oy } = info.offset;
     
@@ -132,8 +137,8 @@ export default function ClassifyPage() {
     else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
     else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
     
-    x.set(0);
-    y.set(0);
+    // 这里不再在handleDragEnd末尾显式置0，因为handleClassify内部会置0
+    // 这样能保证新卡片在渲染时x/y已经是0
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
@@ -196,21 +201,7 @@ export default function ClassifyPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* ガイドラベル */}
-              <div className="absolute -left-4 -top-8 flex flex-col items-start opacity-10 pointer-events-none">
-                <span className="text-xs font-bold text-rose-500 uppercase tracking-widest">↖ 重要・緊急</span>
-              </div>
-              <div className="absolute -right-4 -top-8 flex flex-col items-end opacity-10 pointer-events-none">
-                <span className="text-xs font-bold text-indigo-500 uppercase tracking-widest">重要 ↗</span>
-              </div>
-              <div className="absolute -left-4 -bottom-8 flex flex-col items-start opacity-10 pointer-events-none">
-                <span className="text-xs font-bold text-amber-500 uppercase tracking-widest">↙ 緊急</span>
-              </div>
-              <div className="absolute -right-4 -bottom-8 flex flex-col items-end opacity-10 pointer-events-none">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">低優先 ↘</span>
-              </div>
-
-              {/* 2枚目: プレビュー（操作不可） */}
+              {/* 背面: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -233,8 +224,8 @@ export default function ClassifyPage() {
                 </div>
               )}
 
-              {/* 1枚目: 操作可能カード */}
-              <AnimatePresence mode="popLayout">
+              {/* 前面: 操作可能カード */}
+              <AnimatePresence initial={false}>
                 <motion.div
                   key={currentEvent.id}
                   style={{ x, y, rotate, zIndex: 10, position: 'absolute', width: '100%', height: '100%' }}
@@ -246,7 +237,7 @@ export default function ClassifyPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 退場中に背面カードの操作を遮らない
+                    pointerEvents: 'none', // 消えていく最中のカードが背後の操作を遮らないようにする
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
