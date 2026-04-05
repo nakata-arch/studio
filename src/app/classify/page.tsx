@@ -61,7 +61,7 @@ export default function ClassifyPage() {
     const event = events[0];
     setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 即座に次のカードを表示
+    // 楽観的UI更新: 配列から削除して次のカードを前面に出す
     setEvents(prev => prev.slice(1));
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
 
@@ -98,10 +98,10 @@ export default function ClassifyPage() {
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Rose (Urgent Important)
-    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Indigo (Not Urgent Important)
-    if (lx < 0 && ly > 0) return "rgba(245, 158, 11, 0.8)"; // Amber (Urgent Not Important)
-    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Slate (Not Urgent Not Important)
+    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Rose
+    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Indigo
+    if (lx < 0 && ly > 0) return "rgba(245, 158, 11, 0.8)"; // Amber
+    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Slate
     return "transparent";
   });
 
@@ -119,16 +119,23 @@ export default function ClassifyPage() {
     else if (ox > 0 && oy < 0) handleClassify('not_urgent_important', 1000, -1000);
     else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
     else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
+    
+    // スワイプ後はリセット
+    x.set(0);
+    y.set(0);
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
+
+  const currentEvent = events[0];
+  const nextEvent = events[1];
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
       
       <main className="flex-1 px-8 flex flex-col items-center pt-20 relative">
-        {events.length === 0 ? (
+        {!currentEvent ? (
           <div className="w-full max-w-sm space-y-10 animate-in fade-in duration-700">
             <div className="text-center space-y-4 opacity-60 pt-10">
               <div className="w-16 h-16 bg-primary/5 rounded-[2.5rem] flex items-center justify-center mx-auto border border-primary/10">
@@ -195,81 +202,98 @@ export default function ClassifyPage() {
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">低優先 ↘</span>
               </div>
 
-              <AnimatePresence mode="popLayout">
-                {events.slice(0, 2).reverse().map((ev, index) => {
-                  const isTop = index === (Math.min(events.length, 2) - 1);
-                  return (
-                    <motion.div
-                      key={ev.id}
-                      style={isTop ? { x, y, rotate, zIndex: 10 } : { scale: 0.95, opacity: 0.5, y: 10, zIndex: 0 }}
-                      drag={isTop ? "x" : false}
-                      dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                      onDragEnd={isTop ? handleDragEnd : undefined}
-                      exit={{ 
-                        x: exitDirection.x, 
-                        y: exitDirection.y,
-                        opacity: 0,
-                        scale: 0.5,
-                        transition: { duration: 0.4 }
-                      }}
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5, y: isTop ? 0 : 10 }}
-                      whileDrag={isTop ? { scale: 1.05 } : {}}
-                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                      className="absolute w-full h-full cursor-grab active:cursor-grabbing"
-                    >
-                      <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
-                        <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
-                          {isTop && (
-                            <motion.div 
-                              style={{ backgroundColor: activeColor, opacity: overlayOpacity }}
-                              className="absolute inset-0 z-10 flex items-center justify-center p-10 pointer-events-none"
-                            >
-                              <motion.span 
-                                style={{ opacity: overlayOpacity }}
-                                className="text-2xl font-bold text-white text-center drop-shadow-md"
-                              >
-                                {activeLabel}
-                              </motion.span>
-                            </motion.div>
-                          )}
-
-                          <div className="space-y-4">
-                            <div className="flex items-center gap-2">
-                              <Sparkles className="h-4 w-4 text-primary/20" />
-                              <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">
-                                {ev.calendarName}
-                              </span>
-                            </div>
-                            <h2 className="text-2xl font-headline leading-tight text-foreground/80 break-words line-clamp-4">
-                              {ev.title}
-                            </h2>
-                          </div>
-                          
-                          <div className="space-y-4">
-                            <div className="h-px w-12 bg-primary/10" />
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
-                              <Clock className="h-4 w-4 shrink-0" />
-                              {format(parseISO(ev.startAt), "M月d日(E) HH:mm", { locale: ja })}
-                            </div>
-                          </div>
-
-                          {ev.description && (
-                            <p className="text-[11px] text-muted-foreground/60 leading-relaxed italic line-clamp-3">
-                              {ev.description}
-                            </p>
-                          )}
-                        </CardContent>
-                        
-                        <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
-                          <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                            斜めへ弾いて分類
-                          </div>
+              {/* Back Card (Next) */}
+              {nextEvent && (
+                <div 
+                  key={`next-${nextEvent.id}`}
+                  className="absolute w-full h-full opacity-50 scale-95 translate-y-4 pointer-events-none z-0"
+                >
+                  <Card className="w-full h-full border-none shadow-lg bg-white/80 rounded-[2.5rem] flex flex-col overflow-hidden">
+                    <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">{nextEvent.calendarName}</span>
                         </div>
-                      </Card>
-                    </motion.div>
-                  );
-                })}
+                        <h2 className="text-2xl font-headline leading-tight text-foreground/80 line-clamp-4">{nextEvent.title}</h2>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                        <Clock className="h-4 w-4 shrink-0" />
+                        {format(parseISO(nextEvent.startAt), "M/d HH:mm")}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Front Card (Current) */}
+              <AnimatePresence mode="popLayout">
+                <motion.div
+                  key={currentEvent.id}
+                  style={{ x, y, rotate, zIndex: 10 }}
+                  drag
+                  dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                  onDragEnd={handleDragEnd}
+                  exit={{ 
+                    x: exitDirection.x, 
+                    y: exitDirection.y,
+                    opacity: 0,
+                    scale: 0.5,
+                    transition: { duration: 0.4 }
+                  }}
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  whileDrag={{ scale: 1.05 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                >
+                  <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                    <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
+                      <motion.div 
+                        style={{ backgroundColor: activeColor, opacity: overlayOpacity }}
+                        className="absolute inset-0 z-10 flex items-center justify-center p-10 pointer-events-none"
+                      >
+                        <motion.span 
+                          style={{ opacity: overlayOpacity }}
+                          className="text-2xl font-bold text-white text-center drop-shadow-md"
+                        >
+                          {activeLabel}
+                        </motion.span>
+                      </motion.div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary/20" />
+                          <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">
+                            {currentEvent.calendarName}
+                          </span>
+                        </div>
+                        <h2 className="text-2xl font-headline leading-tight text-foreground/80 break-words line-clamp-4">
+                          {currentEvent.title}
+                        </h2>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div className="h-px w-12 bg-primary/10" />
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                          <Clock className="h-4 w-4 shrink-0" />
+                          {format(parseISO(currentEvent.startAt), "M月d日(E) HH:mm", { locale: ja })}
+                        </div>
+                      </div>
+
+                      {currentEvent.description && (
+                        <p className="text-[11px] text-muted-foreground/60 leading-relaxed italic line-clamp-3">
+                          {currentEvent.description}
+                        </p>
+                      )}
+                    </CardContent>
+                    
+                    <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
+                      <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
+                        斜めへ弾いて分類
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
               </AnimatePresence>
             </div>
           </div>
