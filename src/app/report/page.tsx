@@ -1,20 +1,21 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useFirestore, useUser } from "@/firebase";
 import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, X, Ban, Loader2, Clock, Calendar as CalendarIcon, History, ArrowRight } from "lucide-react";
+import { Check, Clock, Calendar as CalendarIcon, History, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import { format, isBefore, endOfToday, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { QuotePopup } from "@/components/QuotePopup";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 
@@ -24,19 +25,31 @@ export default function ReportPage() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [recentEvents, setRecentEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [memo, setMemo] = useState<Record<string, string>>({});
   const [exitDirection, setExitDirection] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
-  const fetchEvents = async () => {
+  console.log("report:init");
+
+  const fetchEvents = useCallback(async () => {
     if (!user) return;
-    const eventsRef = collection(db, "users", user.uid, "events");
+    console.log("report:user-ready", { uid: user.uid });
     
+    setLoading(true);
+    setError(null);
+    console.log("report:data-start");
+
     try {
+      const eventsRef = collection(db, "users", user.uid, "events");
       const today = endOfToday();
+      
+      // 全件取得してフィルタリング（クエリの複雑さを避けるため）
       const qAll = query(eventsRef, orderBy("startAt", "desc"));
       const snapAll = await getDocs(qAll);
-      const all = snapAll.docs.map(d => d.data() as AppEvent);
+      const all = snapAll.docs.map(d => ({ ...d.data(), id: d.id } as AppEvent));
       
+      console.log("report:data-received", { count: all.length });
+
       const filtered = all.filter(ev => !ev.reportStatus && isBefore(parseISO(ev.startAt), today));
       setEvents(filtered);
       
@@ -44,36 +57,40 @@ export default function ReportPage() {
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
 
+      // 最近の報告済みイベント取得
       const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
       const snapRecent = await getDocs(qRecent);
       setRecentEvents(
         snapRecent.docs
-          .map(d => d.data() as AppEvent)
+          .map(d => ({ ...d.data(), id: d.id } as AppEvent))
           .filter(ev => !!ev.reportStatus)
       );
 
+      console.log("report:data-done", { unclassified: filtered.length });
     } catch (err: any) {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
+      console.error("report:error", err);
+      setError("データの読み込みに失敗しました。通信環境を確認してください。");
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ 
+        path: `users/${user.uid}/events`, 
+        operation: 'list' 
+      }));
     } finally {
       setLoading(false);
+      console.log("report:aggregate-done");
     }
-  };
+  }, [user, db]);
 
   useEffect(() => {
-    if (!isUserLoading && user) fetchEvents();
-  }, [user, isUserLoading, db]);
+    if (!isUserLoading && user) {
+      fetchEvents();
+    } else if (!isUserLoading && !user) {
+      console.log("report:no-user");
+      setLoading(false);
+    }
+  }, [user, isUserLoading, fetchEvents]);
 
   const currentEvent = events[0];
   const nextEvent = events[1];
-
-  // デバッグログ
-  useEffect(() => {
-    if (events.length > 0) {
-      console.log('ReportPage: events.length', events.length);
-      console.log('ReportPage: currentCard', events[0]?.id);
-      console.log('ReportPage: nextCard', events[1]?.id);
-    }
-  }, [events]);
 
   // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
@@ -107,18 +124,15 @@ export default function ReportPage() {
   const handleUpdate = (eventId: string, status: ReportStatus, xDir: number, yDir: number) => {
     if (!user || !currentEvent) return;
     
-    // 次のカードのためにMotionValueを即座にリセット
     x.set(0);
     y.set(0);
 
     const event = currentEvent;
     setExitDirection({ x: xDir, y: yDir });
 
-    // UIを即座に進める
     setEvents(prev => prev.slice(1));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
-    // 非同期でDB更新
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -129,11 +143,7 @@ export default function ReportPage() {
 
     updateDoc(eventDoc, updateData)
       .catch(err => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ 
-          path: eventDoc.path, 
-          operation: 'update',
-          requestResourceData: updateData
-        }));
+        console.error("report:update-error", err);
       });
   };
 
@@ -157,7 +167,32 @@ export default function ReportPage() {
     }
   };
 
-  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
+  if (isUserLoading || loading) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background gap-4">
+        <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
+        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">Loading Report...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background px-8 text-center gap-6">
+        <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center">
+          <AlertCircle className="text-rose-500 h-8 w-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-bold text-foreground/80">エラーが発生しました</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
+        </div>
+        <Button onClick={() => fetchEvents()} variant="outline" className="rounded-full px-8">
+          再試行する
+        </Button>
+        <Navigation />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
@@ -218,7 +253,6 @@ export default function ReportPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* 背面: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -242,7 +276,6 @@ export default function ReportPage() {
                 </div>
               )}
 
-              {/* 前面: 操作可能カード */}
               <AnimatePresence initial={false}>
                 <motion.div
                   key={currentEvent.id}
@@ -255,7 +288,7 @@ export default function ReportPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 退場アニメーション中、背後のカードをブロックしないようにする
+                    pointerEvents: 'none',
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
