@@ -23,7 +23,8 @@ export default function ClassifyPage() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [recentClassified, setRecentClassified] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exitDirection, setExitDirection] = useState<{ x: number, y: number } | null>(null);
+  const [exitX, setExitX] = useState(0);
+  const [exitY, setExitY] = useState(0);
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -55,11 +56,12 @@ export default function ClassifyPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleClassify = (category: QuadrantCategory, vector: { x: number, y: number }) => {
+  const handleClassify = (category: QuadrantCategory, x: number, y: number) => {
     if (events.length === 0 || !user) return;
     
     const event = events[0];
-    setExitDirection(vector);
+    setExitX(x);
+    setExitY(y);
 
     // 楽観的UI更新
     setEvents(prev => prev.slice(1));
@@ -77,7 +79,6 @@ export default function ClassifyPage() {
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
   
-  // スワイプ方向に応じた色とラベルの計算
   const overlayOpacity = useTransform([x, y], ([latestX, latestY]) => {
     const dist = Math.sqrt(Number(latestX) ** 2 + Number(latestY) ** 2);
     return Math.min(dist / 150, 0.8);
@@ -105,16 +106,16 @@ export default function ClassifyPage() {
     return "transparent";
   });
 
-  const handleDragEnd = (event: any, info: any) => {
+  const handleDragEnd = (_: any, info: any) => {
     const threshold = 100;
     const { x: ox, y: oy } = info.offset;
     
     if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) return;
 
-    if (ox < 0 && oy < 0) handleClassify('urgent_important', { x: -1000, y: -1000 });
-    else if (ox > 0 && oy < 0) handleClassify('not_urgent_important', { x: 1000, y: -1000 });
-    else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', { x: -1000, y: 1000 });
-    else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', { x: 1000, y: 1000 });
+    if (ox < 0 && oy < 0) handleClassify('urgent_important', -1000, -1000);
+    else if (ox > 0 && oy < 0) handleClassify('not_urgent_important', 1000, -1000);
+    else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
+    else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
@@ -177,7 +178,7 @@ export default function ClassifyPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* Swipe Hints - 4 Quadrants */}
+              {/* Swipe Hints */}
               <div className="absolute -left-4 -top-8 flex flex-col items-start opacity-20 z-0">
                 <span className="text-xs font-bold text-rose-500 uppercase tracking-widest">↖ 重要・緊急</span>
               </div>
@@ -193,30 +194,29 @@ export default function ClassifyPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
-                  const isTop = index === (events.length > 1 ? 1 : 0);
+                  const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div
                       key={ev.id}
-                      style={isTop ? { x, y, rotate } : { scale: 0.95, opacity: 0.5, y: 10 }}
+                      style={isTop ? { x, y, rotate, zIndex: 10 } : { scale: 0.95, opacity: 0.5, y: 10, zIndex: 0 }}
                       drag={isTop}
                       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                       onDragEnd={handleDragEnd}
                       exit={{ 
-                        x: exitDirection?.x, 
-                        y: exitDirection?.y,
+                        x: exitX, 
+                        y: exitY,
                         opacity: 0,
                         scale: 0.5,
                         transition: { duration: 0.4 }
                       }}
-                      initial={isTop ? false : { scale: 0.9, opacity: 0 }}
+                      initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5, y: isTop ? 0 : 10 }}
                       whileDrag={isTop ? { scale: 1.05 } : {}}
-                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
                       className="absolute w-full h-full cursor-grab active:cursor-grabbing"
                     >
                       <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                         <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
-                          {/* Visual Feedback Overlay */}
                           {isTop && (
                             <motion.div 
                               style={{ backgroundColor: activeColor, opacity: overlayOpacity }}
@@ -260,7 +260,7 @@ export default function ClassifyPage() {
                         
                         <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
                           <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                            指で弾いて分類
+                            斜めへ弾いて分類
                           </div>
                         </div>
                       </Card>

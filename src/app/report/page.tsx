@@ -25,7 +25,8 @@ export default function ReportPage() {
   const [recentEvents, setRecentEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState<Record<string, string>>({});
-  const [exitDirection, setExitDirection] = useState<{ x: number, y: number } | null>(null);
+  const [exitX, setExitX] = useState(0);
+  const [exitY, setExitY] = useState(0);
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -63,13 +64,14 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleUpdate = (eventId: string, status: ReportStatus, vector: { x: number, y: number }) => {
+  const handleUpdate = (eventId: string, status: ReportStatus, x: number, y: number) => {
     if (!user) return;
     
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
-    setExitDirection(vector);
+    setExitX(x);
+    setExitY(y);
 
     // 楽観的UI更新
     setEvents(prev => prev.filter(e => e.id !== eventId));
@@ -122,7 +124,7 @@ export default function ReportPage() {
     return "transparent";
   });
 
-  const handleDragEnd = (event: any, info: any) => {
+  const handleDragEnd = (_: any, info: any) => {
     if (events.length === 0) return;
     const threshold = 100;
     const currentEvent = events[0];
@@ -131,11 +133,11 @@ export default function ReportPage() {
     if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) return;
 
     if (oy < -threshold) {
-      handleUpdate(currentEvent.id, 'cancelled', { x: 0, y: -1000 });
+      handleUpdate(currentEvent.id, 'cancelled', 0, -1000);
     } else if (ox < -threshold) {
-      handleUpdate(currentEvent.id, 'done', { x: -1000, y: 0 });
+      handleUpdate(currentEvent.id, 'done', -1000, 0);
     } else if (ox > threshold) {
-      handleUpdate(currentEvent.id, 'failed', { x: 1000, y: 0 });
+      handleUpdate(currentEvent.id, 'failed', 1000, 0);
     }
   };
 
@@ -216,25 +218,25 @@ export default function ReportPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
-                  const isTop = index === (events.length > 1 ? 1 : 0);
+                  const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div
                       key={ev.id}
-                      style={isTop ? { x, y, rotate } : { scale: 0.95, opacity: 0.5, y: 10 }}
+                      style={isTop ? { x, y, rotate, zIndex: 10 } : { scale: 0.95, opacity: 0.5, y: 10, zIndex: 0 }}
                       drag={isTop}
                       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                       onDragEnd={handleDragEnd}
                       exit={{ 
-                        x: exitDirection?.x, 
-                        y: exitDirection?.y,
+                        x: exitX, 
+                        y: exitY,
                         opacity: 0,
                         scale: 0.5,
                         transition: { duration: 0.4 }
                       }}
-                      initial={isTop ? false : { scale: 0.9, opacity: 0 }}
+                      initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5, y: isTop ? 0 : 10 }}
                       whileDrag={isTop ? { scale: 1.05 } : {}}
-                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
                       className="absolute w-full h-full cursor-grab active:cursor-grabbing"
                     >
                       <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
@@ -279,7 +281,7 @@ export default function ReportPage() {
                           
                           <div className="pt-4 flex justify-center">
                             <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                              左・右・上へスワイプ
+                              左へ弾いて「できた」
                             </div>
                           </div>
                         </CardContent>
