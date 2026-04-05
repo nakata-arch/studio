@@ -63,19 +63,19 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleUpdate = (eventId: string, status: ReportStatus, x: number, y: number) => {
+  const handleUpdate = (eventId: string, status: ReportStatus, xDir: number, yDir: number) => {
     if (!user) return;
     
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
-    setExitDirection({ x, y });
+    setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 即座に次のカードへ
+    // 楽観的UI更新: 即座に次のカードへ進む
     setEvents(prev => prev.filter(e => e.id !== eventId));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
-    // 非同期更新 (awaitしない)
+    // 非同期更新
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -117,9 +117,9 @@ export default function ReportPage() {
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (ly < -80) return "rgba(100, 116, 139, 0.8)"; // Slate
-    if (lx < -80) return "rgba(16, 185, 129, 0.8)"; // Emerald
-    if (lx > 80) return "rgba(244, 63, 94, 0.8)"; // Rose
+    if (ly < -80) return "rgba(100, 116, 139, 0.8)"; // Slate (Cancelled)
+    if (lx < -80) return "rgba(16, 185, 129, 0.8)"; // Emerald (Done)
+    if (lx > 80) return "rgba(244, 63, 94, 0.8)"; // Rose (Failed)
     return "transparent";
   });
 
@@ -221,7 +221,6 @@ export default function ReportPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
-                  // events[0] が常にスタックの一番上
                   const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div

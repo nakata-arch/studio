@@ -55,11 +55,11 @@ export default function ClassifyPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleClassify = (category: QuadrantCategory, x: number, y: number) => {
+  const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
     if (events.length === 0 || !user) return;
     
     const event = events[0];
-    setExitDirection({ x, y });
+    setExitDirection({ x: xDir, y: yDir });
 
     // 楽観的UI更新: 即座に次のカードを表示
     setEvents(prev => prev.slice(1));
@@ -98,10 +98,10 @@ export default function ClassifyPage() {
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Rose
-    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Indigo
-    if (lx < 0 && ly > 0) return "rgba(245, 158, 11, 0.8)"; // Amber
-    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Slate
+    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Rose (Urgent Important)
+    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Indigo (Not Urgent Important)
+    if (lx < 0 && ly > 0) return "rgba(245, 158, 11, 0.8)"; // Amber (Urgent Not Important)
+    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Slate (Not Urgent Not Important)
     return "transparent";
   });
 
