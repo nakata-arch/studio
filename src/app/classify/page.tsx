@@ -197,7 +197,6 @@ export default function ClassifyPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
-                  // events[0] が常にスタックの一番上
                   const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div

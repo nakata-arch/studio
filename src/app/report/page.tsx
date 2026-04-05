@@ -75,7 +75,7 @@ export default function ReportPage() {
     setEvents(prev => prev.filter(e => e.id !== eventId));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
-    // 非同期更新
+    // 非同期更新 (awaitしない)
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -109,8 +109,8 @@ export default function ReportPage() {
     const ly = Number(latestY);
     if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
     if (ly < -80) return "中止";
-    if (lx < -80) return "できた";
-    if (lx > 80) return "未達";
+    if (lx < -80) return "できた"; // 左スワイプ: できた
+    if (lx > 80) return "未達";   // 右スワイプ: 未達
     return "";
   });
 
@@ -221,6 +221,7 @@ export default function ReportPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
+                  // events[0] が常にスタックの一番上
                   const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div
