@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { signInWithRedirect, GoogleAuthProvider, getRedirectResult } from "firebase/auth";
 import { useAuth, useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
@@ -14,22 +14,44 @@ import {
   BookOpen, 
   CheckCircle2, 
   Heart, 
-  MessageCircle 
+  MessageCircle,
+  AlertTriangle
 } from "lucide-react";
 import Image from "next/image";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LandingPage() {
   const router = useRouter();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+  const [isPreviewEnv, setIsPreviewEnv] = useState(false);
 
   useEffect(() => {
+    // Check if running in preview environment
+    if (typeof window !== "undefined") {
+      setIsPreviewEnv(window.location.hostname.includes("cloudworkstations.dev"));
+    }
+
     // Handle redirect result on mount
     getRedirectResult(auth).catch((error) => {
       console.error("Redirect login failed:", error);
+      if (error.code === "auth/operation-not-allowed") {
+        toast({
+          variant: "destructive",
+          title: "ログインが許可されていません",
+          description: "Firebase ConsoleでGoogleログインを有効にしてください。",
+        });
+      } else if (error.code === "auth/unauthorized-domain") {
+        toast({
+          variant: "destructive",
+          title: "未承認のドメインです",
+          description: "Firebase Consoleで現在のドメインを承認済みドメインに追加してください。",
+        });
+      }
     });
-  }, [auth]);
+  }, [auth, toast]);
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -38,9 +60,18 @@ export default function LandingPage() {
   }, [user, isUserLoading, router]);
 
   const handleLogin = () => {
+    if (isPreviewEnv) {
+      toast({
+        variant: "destructive",
+        title: "プレビュー環境制限",
+        description: "Googleログインは本番ドメイン（web.app）でのみ動作します。デプロイ後に確認してください。",
+      });
+      return;
+    }
+
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    // Ensure no async/await before calling redirect to avoid browser blocks
+    // Ensure no async/await before calling redirect
     signInWithRedirect(auth, provider).catch((error) => {
       console.error("Redirect login trigger failed:", error);
     });
@@ -56,7 +87,7 @@ export default function LandingPage() {
       <section className="px-8 pt-24 pb-20 flex flex-col items-center text-center space-y-12">
         <div className="space-y-6 max-w-sm">
           <div className="flex justify-center">
-            <div className="w-16 h-16 bg-primary/5 rounded-[2rem] flex items-center justify-center border border-primary/10">
+            <div className="w-16 h-16 bg-primary/5 rounded-2rem flex items-center justify-center border border-primary/10">
               <Sparkles className="text-primary w-8 h-8 opacity-60" />
             </div>
           </div>
@@ -70,6 +101,18 @@ export default function LandingPage() {
             </p>
           </div>
         </div>
+
+        {isPreviewEnv && (
+          <div className="max-w-sm w-full p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-left">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
+              <p className="text-[10px] text-amber-700 leading-relaxed">
+                Google ログインはセキュリティ制限のためプレビュー環境では動作しません。ログインを試すには、`firebase deploy` でホスティングドメイン（.web.app）に公開してください。
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="w-full max-w-sm space-y-4">
           <Button 
@@ -86,7 +129,7 @@ export default function LandingPage() {
         </div>
 
         {heroImage && (
-          <div className="relative w-full max-w-md aspect-[4/3] rounded-[3rem] overflow-hidden shadow-2xl mt-8">
+          <div className="relative w-full max-w-md aspect-[4/3] rounded-3rem overflow-hidden shadow-2xl mt-8">
              <Image 
               src={heroImage.imageUrl} 
               alt={heroImage.description}

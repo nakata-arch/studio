@@ -16,7 +16,8 @@ import {
   User as UserIcon,
   ClipboardCheck,
   ListTodo,
-  ExternalLink
+  ExternalLink,
+  AlertTriangle
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,13 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
+  const [isPreviewEnv, setIsPreviewEnv] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsPreviewEnv(window.location.hostname.includes("cloudworkstations.dev"));
+    }
+  }, []);
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
@@ -131,6 +139,15 @@ export default function SettingsPage() {
 
   const handleSyncTrigger = () => {
     if (!user) return;
+    if (isPreviewEnv) {
+      toast({
+        variant: "destructive",
+        title: "プレビュー環境制限",
+        description: "カレンダー同期のための再認証は本番ドメインでのみ動作します。",
+      });
+      return;
+    }
+
     setSyncStatus('syncing');
     setErrorDetails(null);
     const provider = new GoogleAuthProvider();
@@ -159,6 +176,18 @@ export default function SettingsPage() {
             <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email}</p>
           </div>
         </div>
+
+        {isPreviewEnv && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
+              <p className="text-[10px] text-amber-700 leading-relaxed">
+                カレンダー同期のための再認証は、セキュリティ設定によりこのプレビュードメインでは動作しません。デプロイ後の本番環境で実行してください。
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
