@@ -179,7 +179,7 @@ export default function ReportPage() {
                     <Card key={ev.id} className="border-none shadow-sm bg-white/60 rounded-2xl overflow-hidden">
                       <CardContent className="p-4 flex items-center justify-between gap-4">
                         <div className="min-w-0 space-y-1">
-                          <h4 className="text-[13px] font-bold text-foreground/70 truncate">{ev.title}</h4>
+                          h4 className="text-[13px] font-bold text-foreground/70 truncate">{ev.title}</h4>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground opacity-50 font-medium">
                             <Clock className="h-3 w-3" />
                             {format(parseISO(ev.startAt), "M/d HH:mm")}
