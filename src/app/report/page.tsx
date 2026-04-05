@@ -25,7 +25,7 @@ export default function ReportPage() {
   const [recentEvents, setRecentEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState<Record<string, string>>({});
-  const [exitDirection, setExitDirection] = useState<'left' | 'right' | 'up' | null>(null);
+  const [exitDirection, setExitDirection] = useState<{ x: number, y: number } | null>(null);
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -63,19 +63,19 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleUpdate = (eventId: string, status: ReportStatus, direction: 'left' | 'right' | 'up') => {
+  const handleUpdate = (eventId: string, status: ReportStatus, vector: { x: number, y: number }) => {
     if (!user) return;
     
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
-    setExitDirection(direction);
+    setExitDirection(vector);
 
-    // 1. 楽観的にUIを更新
+    // 楽観的UI更新
     setEvents(prev => prev.filter(e => e.id !== eventId));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
-    // 2. 非同期でFirestoreを更新
+    // 非同期更新
     const eventDoc = doc(db, "users", user.uid, "events", eventId);
     const updateData = { 
       reportStatus: status, 
@@ -96,37 +96,46 @@ export default function ReportPage() {
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
-  const rotate = useTransform(x, [-200, 200], [-25, 25]);
-  const opacity = useTransform(
-    [x, y],
-    ([latestX, latestY]) => {
-      const dist = Math.sqrt(Number(latestX) ** 2 + Number(latestY) ** 2);
-      return Math.max(1 - dist / 500, 0.5);
-    }
-  );
+  const rotate = useTransform(x, [-200, 200], [-15, 15]);
 
-  const cardBackground = useTransform(
-    [x, y],
-    ([latestX, latestY]) => {
-      const threshold = 50;
-      if (Number(latestX) < -threshold) return "rgba(16, 185, 129, 0.1)"; // できた (emerald)
-      if (Number(latestX) > threshold) return "rgba(244, 63, 94, 0.1)"; // 未達 (rose)
-      if (Number(latestY) < -threshold) return "rgba(100, 116, 139, 0.1)"; // 中止 (slate)
-      return "rgba(255, 255, 255, 1)";
-    }
-  );
+  const overlayOpacity = useTransform([x, y], ([latestX, latestY]) => {
+    const dist = Math.sqrt(Number(latestX) ** 2 + Number(latestY) ** 2);
+    return Math.min(dist / 150, 0.8);
+  });
+
+  const activeLabel = useTransform([x, y], ([latestX, latestY]) => {
+    const lx = Number(latestX);
+    const ly = Number(latestY);
+    if (Math.abs(lx) < 30 && Math.abs(ly) < 30) return "";
+    if (ly < -50) return "中止";
+    if (lx < -50) return "できた";
+    if (lx > 50) return "未達";
+    return "";
+  });
+
+  const activeColor = useTransform([x, y], ([latestX, latestY]) => {
+    const lx = Number(latestX);
+    const ly = Number(latestY);
+    if (ly < -50) return "rgba(100, 116, 139, 0.8)"; // Slate
+    if (lx < -50) return "rgba(16, 185, 129, 0.8)"; // Emerald
+    if (lx > 50) return "rgba(244, 63, 94, 0.8)"; // Rose
+    return "transparent";
+  });
 
   const handleDragEnd = (event: any, info: any) => {
     if (events.length === 0) return;
     const threshold = 100;
     const currentEvent = events[0];
+    const { x: ox, y: oy } = info.offset;
     
-    if (info.offset.x < -threshold) {
-      handleUpdate(currentEvent.id, 'done', 'left');
-    } else if (info.offset.x > threshold) {
-      handleUpdate(currentEvent.id, 'failed', 'right');
-    } else if (info.offset.y < -threshold) {
-      handleUpdate(currentEvent.id, 'cancelled', 'up');
+    if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) return;
+
+    if (oy < -threshold) {
+      handleUpdate(currentEvent.id, 'cancelled', { x: 0, y: -1000 });
+    } else if (ox < -threshold) {
+      handleUpdate(currentEvent.id, 'done', { x: -1000, y: 0 });
+    } else if (ox > threshold) {
+      handleUpdate(currentEvent.id, 'failed', { x: 1000, y: 0 });
     }
   };
 
@@ -192,15 +201,15 @@ export default function ReportPage() {
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
               {/* Swipe Hints */}
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 z-0">
                 <Ban className="h-5 w-5 text-slate-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
               </div>
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 z-0">
                 <Check className="h-5 w-5 text-emerald-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">できた</span>
               </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 z-0">
                 <X className="h-5 w-5 text-rose-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">未達</span>
               </div>
@@ -211,25 +220,39 @@ export default function ReportPage() {
                   return (
                     <motion.div
                       key={ev.id}
-                      style={isTop ? { x, y, rotate, opacity, backgroundColor: cardBackground } : { scale: 0.95, opacity: 0.5 }}
+                      style={isTop ? { x, y, rotate } : { scale: 0.95, opacity: 0.5, y: 10 }}
                       drag={isTop}
                       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                       onDragEnd={handleDragEnd}
                       exit={{ 
-                        x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
-                        y: exitDirection === 'up' ? -1000 : 0,
+                        x: exitDirection?.x, 
+                        y: exitDirection?.y,
                         opacity: 0,
                         scale: 0.5,
                         transition: { duration: 0.4 }
                       }}
                       initial={isTop ? false : { scale: 0.9, opacity: 0 }}
-                      animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5 }}
+                      animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5, y: isTop ? 0 : 10 }}
                       whileDrag={isTop ? { scale: 1.05 } : {}}
                       transition={{ type: "spring", stiffness: 300, damping: 20 }}
                       className="absolute w-full h-full cursor-grab active:cursor-grabbing"
                     >
-                      <Card className="w-full h-full border-none shadow-2xl bg-inherit relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                      <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                         <CardContent className="p-8 flex-1 flex flex-col space-y-6">
+                          {isTop && (
+                            <motion.div 
+                              style={{ backgroundColor: activeColor, opacity: overlayOpacity }}
+                              className="absolute inset-0 z-10 flex items-center justify-center p-10 pointer-events-none"
+                            >
+                              <motion.span 
+                                style={{ opacity: overlayOpacity }}
+                                className="text-2xl font-bold text-white text-center drop-shadow-md"
+                              >
+                                {activeLabel}
+                              </motion.span>
+                            </motion.div>
+                          )}
+
                           <div className="space-y-4">
                             <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
                               <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
@@ -256,7 +279,7 @@ export default function ReportPage() {
                           
                           <div className="pt-4 flex justify-center">
                             <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                              左右または上へスワイプ
+                              左・右・上へスワイプ
                             </div>
                           </div>
                         </CardContent>
