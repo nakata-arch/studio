@@ -29,9 +29,14 @@ export default function LandingPage() {
   const [isPreviewEnv, setIsPreviewEnv] = useState(false);
 
   useEffect(() => {
-    // Check if running in preview environment
     if (typeof window !== "undefined") {
-      setIsPreviewEnv(window.location.hostname.includes("cloudworkstations.dev"));
+      const hostname = window.location.hostname;
+      // プレビュー環境の判定
+      const isStudioPreview = 
+        hostname.includes("cloudworkstations.dev") || 
+        hostname === "studio.firebase.google.com";
+      
+      setIsPreviewEnv(isStudioPreview);
     }
 
     // Handle redirect result on mount
@@ -64,14 +69,13 @@ export default function LandingPage() {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "Googleログインは本番ドメイン（web.app）でのみ動作します。デプロイ後に確認してください。",
+        description: "Googleログインは、firebase deploy 後の本番ドメイン（hosted.app / web.app）でのみ動作します。",
       });
       return;
     }
 
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    // Ensure no async/await before calling redirect
     signInWithRedirect(auth, provider).catch((error) => {
       console.error("Redirect login trigger failed:", error);
     });
@@ -87,7 +91,7 @@ export default function LandingPage() {
       <section className="px-8 pt-24 pb-20 flex flex-col items-center text-center space-y-12">
         <div className="space-y-6 max-w-sm">
           <div className="flex justify-center">
-            <div className="w-16 h-16 bg-primary/5 rounded-2rem flex items-center justify-center border border-primary/10">
+            <div className="w-16 h-16 bg-primary/5 rounded-[2.5rem] flex items-center justify-center border border-primary/10">
               <Sparkles className="text-primary w-8 h-8 opacity-60" />
             </div>
           </div>
@@ -108,7 +112,7 @@ export default function LandingPage() {
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                Google ログインはセキュリティ制限のためプレビュー環境では動作しません。ログインを試すには、`firebase deploy` でホスティングドメイン（.web.app）に公開してください。
+                Google ログインはセキュリティ制限のためプレビュー環境では動作しません。ログインを試すには、`firebase deploy` で本番ドメイン（.hosted.app / .web.app）に公開してください。
               </p>
             </div>
           </div>
@@ -129,7 +133,7 @@ export default function LandingPage() {
         </div>
 
         {heroImage && (
-          <div className="relative w-full max-w-md aspect-[4/3] rounded-3rem overflow-hidden shadow-2xl mt-8">
+          <div className="relative w-full max-w-md aspect-[4/3] rounded-[3rem] overflow-hidden shadow-2xl mt-8">
              <Image 
               src={heroImage.imageUrl} 
               alt={heroImage.description}

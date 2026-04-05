@@ -36,7 +36,13 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setIsPreviewEnv(window.location.hostname.includes("cloudworkstations.dev"));
+      const hostname = window.location.hostname;
+      // プレビュー環境の判定
+      const isStudioPreview = 
+        hostname.includes("cloudworkstations.dev") || 
+        hostname === "studio.firebase.google.com";
+      
+      setIsPreviewEnv(isStudioPreview);
     }
   }, []);
 
@@ -143,7 +149,7 @@ export default function SettingsPage() {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "カレンダー同期のための再認証は本番ドメインでのみ動作します。",
+        description: "カレンダー同期のための再認証は、firebase deploy 後の本番ドメインでのみ動作します。",
       });
       return;
     }
@@ -152,7 +158,6 @@ export default function SettingsPage() {
     setErrorDetails(null);
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    // Ensure no async/await before calling redirect
     signInWithRedirect(auth, provider).catch((error) => {
       console.error("Redirect sync trigger failed:", error);
       setSyncStatus('failed');
@@ -183,7 +188,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                カレンダー同期のための再認証は、セキュリティ設定によりこのプレビュードメインでは動作しません。デプロイ後の本番環境で実行してください。
+                Google ログインを伴うカレンダー同期は、セキュリティ制限のためプレビュー環境では動作しません。`firebase deploy` で本番環境に公開してから実行してください。
               </p>
             </div>
           </div>
