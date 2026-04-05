@@ -23,8 +23,7 @@ export default function ClassifyPage() {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [recentClassified, setRecentClassified] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exitX, setExitX] = useState(0);
-  const [exitY, setExitY] = useState(0);
+  const [exitDirection, setExitDirection] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -60,10 +59,9 @@ export default function ClassifyPage() {
     if (events.length === 0 || !user) return;
     
     const event = events[0];
-    setExitX(x);
-    setExitY(y);
+    setExitDirection({ x, y });
 
-    // 楽観的UI更新
+    // 楽観的UI更新: 即座に次のカードを表示
     setEvents(prev => prev.slice(1));
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
 
@@ -75,6 +73,7 @@ export default function ClassifyPage() {
       });
   };
 
+  // Tinderアニメーション用のHooks
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -87,7 +86,7 @@ export default function ClassifyPage() {
   const activeLabel = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (Math.abs(lx) < 30 && Math.abs(ly) < 30) return "";
+    if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
     
     if (lx < 0 && ly < 0) return "重要 × 緊急";
     if (lx > 0 && ly < 0) return "重要";
@@ -99,10 +98,10 @@ export default function ClassifyPage() {
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Red
-    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Blue
+    if (lx < 0 && ly < 0) return "rgba(244, 63, 94, 0.8)"; // Rose
+    if (lx > 0 && ly < 0) return "rgba(99, 102, 241, 0.8)"; // Indigo
     if (lx < 0 && ly > 0) return "rgba(245, 158, 11, 0.8)"; // Amber
-    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Gray
+    if (lx > 0 && ly > 0) return "rgba(100, 116, 139, 0.8)"; // Slate
     return "transparent";
   });
 
@@ -110,7 +109,11 @@ export default function ClassifyPage() {
     const threshold = 100;
     const { x: ox, y: oy } = info.offset;
     
-    if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) return;
+    if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) {
+      x.set(0);
+      y.set(0);
+      return;
+    }
 
     if (ox < 0 && oy < 0) handleClassify('urgent_important', -1000, -1000);
     else if (ox > 0 && oy < 0) handleClassify('not_urgent_important', 1000, -1000);
@@ -149,7 +152,7 @@ export default function ClassifyPage() {
                   </Link>
                 </div>
                 <div className="space-y-3">
-                  {recentClassified.map(ev => (
+                  {recentClassified.slice(0, 5).map(ev => (
                     <Card key={ev.id} className="border-none shadow-sm bg-white/60 rounded-2xl overflow-hidden">
                       <CardContent className="p-4 flex items-center justify-between gap-4">
                         <div className="min-w-0 space-y-1">
@@ -194,17 +197,18 @@ export default function ClassifyPage() {
 
               <AnimatePresence mode="popLayout">
                 {events.slice(0, 2).reverse().map((ev, index) => {
+                  // events[0] が常にスタックの一番上
                   const isTop = index === (Math.min(events.length, 2) - 1);
                   return (
                     <motion.div
                       key={ev.id}
                       style={isTop ? { x, y, rotate, zIndex: 10 } : { scale: 0.95, opacity: 0.5, y: 10, zIndex: 0 }}
-                      drag={isTop}
+                      drag={isTop ? "x" : false}
                       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                      onDragEnd={handleDragEnd}
+                      onDragEnd={isTop ? handleDragEnd : undefined}
                       exit={{ 
-                        x: exitX, 
-                        y: exitY,
+                        x: exitDirection.x, 
+                        y: exitDirection.y,
                         opacity: 0,
                         scale: 0.5,
                         transition: { duration: 0.4 }

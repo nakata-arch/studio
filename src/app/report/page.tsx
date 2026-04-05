@@ -25,8 +25,7 @@ export default function ReportPage() {
   const [recentEvents, setRecentEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [memo, setMemo] = useState<Record<string, string>>({});
-  const [exitX, setExitX] = useState(0);
-  const [exitY, setExitY] = useState(0);
+  const [exitDirection, setExitDirection] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
   const fetchEvents = async () => {
     if (!user) return;
@@ -70,10 +69,9 @@ export default function ReportPage() {
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
-    setExitX(x);
-    setExitY(y);
+    setExitDirection({ x, y });
 
-    // 楽観的UI更新
+    // 楽観的UI更新: 即座に次のカードへ
     setEvents(prev => prev.filter(e => e.id !== eventId));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
@@ -96,6 +94,7 @@ export default function ReportPage() {
       });
   };
 
+  // Tinderアニメーション用のHooks
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -108,19 +107,19 @@ export default function ReportPage() {
   const activeLabel = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (Math.abs(lx) < 30 && Math.abs(ly) < 30) return "";
-    if (ly < -50) return "中止";
-    if (lx < -50) return "できた";
-    if (lx > 50) return "未達";
+    if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
+    if (ly < -80) return "中止";
+    if (lx < -80) return "できた";
+    if (lx > 80) return "未達";
     return "";
   });
 
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (ly < -50) return "rgba(100, 116, 139, 0.8)"; // Slate
-    if (lx < -50) return "rgba(16, 185, 129, 0.8)"; // Emerald
-    if (lx > 50) return "rgba(244, 63, 94, 0.8)"; // Rose
+    if (ly < -80) return "rgba(100, 116, 139, 0.8)"; // Slate
+    if (lx < -80) return "rgba(16, 185, 129, 0.8)"; // Emerald
+    if (lx > 80) return "rgba(244, 63, 94, 0.8)"; // Rose
     return "transparent";
   });
 
@@ -130,7 +129,11 @@ export default function ReportPage() {
     const currentEvent = events[0];
     const { x: ox, y: oy } = info.offset;
     
-    if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) return;
+    if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) {
+      x.set(0);
+      y.set(0);
+      return;
+    }
 
     if (oy < -threshold) {
       handleUpdate(currentEvent.id, 'cancelled', 0, -1000);
@@ -172,7 +175,7 @@ export default function ReportPage() {
                   </Link>
                 </div>
                 <div className="space-y-3">
-                  {recentEvents.map(ev => (
+                  {recentEvents.slice(0, 5).map(ev => (
                     <Card key={ev.id} className="border-none shadow-sm bg-white/60 rounded-2xl overflow-hidden">
                       <CardContent className="p-4 flex items-center justify-between gap-4">
                         <div className="min-w-0 space-y-1">
@@ -223,12 +226,12 @@ export default function ReportPage() {
                     <motion.div
                       key={ev.id}
                       style={isTop ? { x, y, rotate, zIndex: 10 } : { scale: 0.95, opacity: 0.5, y: 10, zIndex: 0 }}
-                      drag={isTop}
+                      drag={isTop ? "x" : false}
                       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                      onDragEnd={handleDragEnd}
+                      onDragEnd={isTop ? handleDragEnd : undefined}
                       exit={{ 
-                        x: exitX, 
-                        y: exitY,
+                        x: exitDirection.x, 
+                        y: exitDirection.y,
                         opacity: 0,
                         scale: 0.5,
                         transition: { duration: 0.4 }
