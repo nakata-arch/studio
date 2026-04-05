@@ -40,8 +40,6 @@ export default function ReportPage() {
       const filtered = all.filter(ev => !ev.reportStatus && isBefore(parseISO(ev.startAt), today));
       setEvents(filtered);
       
-      console.log('ReportPage: Unreported events loaded', filtered.length);
-
       const initial: Record<string, string> = {};
       filtered.forEach(ev => initial[ev.id] = ev.reportMemo || "");
       setMemo(initial);
@@ -65,22 +63,26 @@ export default function ReportPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
+  const currentEvent = events[0];
+  const nextEvent = events[1];
+
+  // デバッグログ
+  useEffect(() => {
+    if (events.length > 0) {
+      console.log('ReportPage: events.length', events.length);
+      console.log('ReportPage: currentCard', events[0]?.id);
+      console.log('ReportPage: nextCard', events[1]?.id);
+    }
+  }, [events]);
+
   const handleUpdate = (eventId: string, status: ReportStatus, xDir: number, yDir: number) => {
-    if (!user) return;
+    if (!user || !currentEvent) return;
     
-    const event = events.find(e => e.id === eventId);
-    if (!event) return;
-
-    console.log('ReportPage: Reporting event', eventId, 'as', status);
-
+    const event = currentEvent;
     setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 配列の先頭を削除
-    setEvents(prev => {
-      const next = prev.filter(e => e.id !== eventId);
-      console.log('ReportPage: Remaining events', next.length);
-      return next;
-    });
+    // UIを即座に進める（配列の先頭を削除）
+    setEvents(prev => prev.slice(1));
     setRecentEvents(prev => [{ ...event, reportStatus: status }, ...prev].slice(0, 30));
     
     // 非同期でDB更新
@@ -102,9 +104,7 @@ export default function ReportPage() {
       });
   };
 
-  // --------------------------------------------------------------------------
-  // ドラッグ制御用フック
-  // --------------------------------------------------------------------------
+  // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -119,24 +119,23 @@ export default function ReportPage() {
     const ly = Number(latestY);
     if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
     if (ly < -80) return "中止";
-    if (lx < -80) return "できた"; // 左: できた
-    if (lx > 80) return "未達";   // 右: 未達
+    if (lx < -80) return "できた"; 
+    if (lx > 80) return "未達";   
     return "";
   });
 
   const activeColor = useTransform([x, y], ([latestX, latestY]) => {
     const lx = Number(latestX);
     const ly = Number(latestY);
-    if (ly < -80) return "rgba(100, 116, 139, 0.8)"; // Cancelled
-    if (lx < -80) return "rgba(16, 185, 129, 0.8)"; // Done
-    if (lx > 80) return "rgba(244, 63, 94, 0.8)"; // Failed
+    if (ly < -80) return "rgba(100, 116, 139, 0.8)"; 
+    if (lx < -80) return "rgba(16, 185, 129, 0.8)"; 
+    if (lx > 80) return "rgba(244, 63, 94, 0.8)"; 
     return "transparent";
   });
 
   const handleDragEnd = (_: any, info: any) => {
-    if (events.length === 0) return;
+    if (!currentEvent) return;
     const threshold = 80;
-    const currentEvent = events[0];
     const { x: ox, y: oy } = info.offset;
     
     if (Math.abs(ox) < threshold && Math.abs(oy) < threshold) {
@@ -153,15 +152,11 @@ export default function ReportPage() {
       handleUpdate(currentEvent.id, 'failed', 1000, 0);
     }
 
-    // 値をリセット
     x.set(0);
     y.set(0);
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
-
-  const currentEvent = events[0];
-  const nextEvent = events[1];
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
@@ -222,7 +217,7 @@ export default function ReportPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* スワイプ方向のガイドラベル（背景に表示） */}
+              {/* ガイドラベル */}
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-10 pointer-events-none">
                 <Ban className="h-5 w-5 text-slate-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
@@ -273,14 +268,14 @@ export default function ReportPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 退場中に背面カードの操作を邪魔しない
+                    pointerEvents: 'none', // 退場中に背面カードの操作を遮らない
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing touch-none"
                 >
                   <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                     <CardContent className="p-8 flex-1 flex flex-col space-y-6">

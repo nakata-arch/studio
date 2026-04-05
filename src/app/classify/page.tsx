@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useFirestore, useUser } from "@/firebase";
 import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
@@ -37,8 +37,6 @@ export default function ClassifyPage() {
       const unclassified = all.filter(ev => !ev.quadrantCategory);
       setEvents(unclassified);
 
-      console.log('ClassifyPage: Initial events loaded', unclassified.length);
-
       const qRecent = query(eventsRef, orderBy("updatedAt", "desc"), limit(30));
       const snapRecent = await getDocs(qRecent);
       setRecentClassified(
@@ -58,20 +56,26 @@ export default function ClassifyPage() {
     if (!isUserLoading && user) fetchEvents();
   }, [user, isUserLoading, db]);
 
-  const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
-    if (events.length === 0 || !user) return;
-    
-    const event = events[0];
-    console.log('ClassifyPage: Swiping event', event.id, 'Direction', xDir, yDir);
+  const currentEvent = events[0];
+  const nextEvent = events[1];
 
+  // デバッグログ
+  useEffect(() => {
+    if (events.length > 0) {
+      console.log('ClassifyPage: events.length', events.length);
+      console.log('ClassifyPage: currentCard', events[0]?.id);
+      console.log('ClassifyPage: nextCard', events[1]?.id);
+    }
+  }, [events]);
+
+  const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
+    if (!currentEvent || !user) return;
+    
+    const event = currentEvent;
     setExitDirection({ x: xDir, y: yDir });
 
-    // 楽観的UI更新: 配列の先頭を削除して次を昇格させる
-    setEvents(prev => {
-      const next = prev.slice(1);
-      console.log('ClassifyPage: Remaining events', next.length);
-      return next;
-    });
+    // UIを即座に進める（配列の先頭を削除）
+    setEvents(prev => prev.slice(1));
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
 
     // 非同期でDB更新
@@ -82,9 +86,7 @@ export default function ClassifyPage() {
       });
   };
 
-  // --------------------------------------------------------------------------
-  // ドラッグ制御用フック
-  // --------------------------------------------------------------------------
+  // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -98,7 +100,6 @@ export default function ClassifyPage() {
     const lx = Number(latestX);
     const ly = Number(latestY);
     if (Math.abs(lx) < 40 && Math.abs(ly) < 40) return "";
-    
     if (lx < 0 && ly < 0) return "重要 × 緊急";
     if (lx > 0 && ly < 0) return "重要";
     if (lx < 0 && ly > 0) return "緊急";
@@ -131,15 +132,11 @@ export default function ClassifyPage() {
     else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
     else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
     
-    // 値をリセット
     x.set(0);
     y.set(0);
   };
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
-
-  const currentEvent = events[0];
-  const nextEvent = events[1];
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
@@ -199,7 +196,7 @@ export default function ClassifyPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* スワイプ方向のガイドラベル（背景に表示） */}
+              {/* ガイドラベル */}
               <div className="absolute -left-4 -top-8 flex flex-col items-start opacity-10 pointer-events-none">
                 <span className="text-xs font-bold text-rose-500 uppercase tracking-widest">↖ 重要・緊急</span>
               </div>
@@ -249,14 +246,14 @@ export default function ClassifyPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 退場中に背面カードの操作を邪魔しない
+                    pointerEvents: 'none', // 退場中に背面カードの操作を遮らない
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileDrag={{ scale: 1.05 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing touch-none"
                 >
                   <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
                     <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
