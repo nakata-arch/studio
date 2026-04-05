@@ -71,7 +71,6 @@ export default function ClassifyPage() {
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .catch(err => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
-        // 必要に応じてロールバック処理を追加
       });
   };
 
@@ -101,8 +100,6 @@ export default function ClassifyPage() {
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
 
-  const current = events[0];
-
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
@@ -125,7 +122,7 @@ export default function ClassifyPage() {
                 <div className="flex items-center justify-between px-2">
                   <div className="flex items-center gap-2 text-primary/30">
                     <History className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">分類済み予定一覧</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">最近の分類一覧</span>
                   </div>
                   <Link href="/events" className="text-[9px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1">
                     すべて見る <ArrowRight className="h-2.5 w-2.5" />
@@ -162,78 +159,85 @@ export default function ClassifyPage() {
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
               {/* Swipe Hints */}
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center z-0">
                 <span className="text-xl">🚨</span>
                 <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">緊急・重要</span>
               </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse text-center z-0">
                 <span className="text-xl">✨</span>
                 <span className="text-[8px] font-bold uppercase tracking-widest text-indigo-500">重要・非緊急</span>
               </div>
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center z-0">
                 <span className="text-xl">⏳</span>
                 <span className="text-[8px] font-bold uppercase tracking-widest text-amber-500">緊急・非重要</span>
               </div>
-              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center">
+              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse text-center z-0">
                 <span className="text-xl">☁️</span>
                 <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">非重要・非緊急</span>
               </div>
 
               <AnimatePresence mode="popLayout">
-                <motion.div
-                  key={current.id}
-                  style={{ x, y, rotate, opacity }}
-                  drag
-                  dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                  onDragEnd={handleDragEnd}
-                  exit={{ 
-                    x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
-                    y: exitDirection === 'up' ? -1000 : exitDirection === 'down' ? 1000 : 0,
-                    opacity: 0,
-                    scale: 0.5,
-                    transition: { duration: 0.4 }
-                  }}
-                  whileDrag={{ scale: 1.05 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
-                >
-                  <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
-                    <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10" />
-                    <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary/20" />
-                          <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">
-                            {current.calendarName}
-                          </span>
-                        </div>
-                        <h2 className="text-2xl font-headline leading-tight text-foreground/80 break-words line-clamp-4">
-                          {current.title}
-                        </h2>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="h-px w-12 bg-primary/10" />
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
-                          <Clock className="h-4 w-4 shrink-0" />
-                          {format(parseISO(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
-                        </div>
-                      </div>
+                {events.slice(0, 2).reverse().map((ev, index) => {
+                  const isTop = index === (events.length > 1 ? 1 : 0);
+                  return (
+                    <motion.div
+                      key={ev.id}
+                      style={isTop ? { x, y, rotate, opacity } : { scale: 0.95, opacity: 0.5 }}
+                      drag={isTop}
+                      dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                      onDragEnd={handleDragEnd}
+                      exit={{ 
+                        x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
+                        y: exitDirection === 'up' ? -1000 : exitDirection === 'down' ? 1000 : 0,
+                        opacity: 0,
+                        scale: 0.5,
+                        transition: { duration: 0.4 }
+                      }}
+                      initial={isTop ? false : { scale: 0.9, opacity: 0 }}
+                      animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5 }}
+                      whileDrag={isTop ? { scale: 1.05 } : {}}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                    >
+                      <Card className="w-full h-full border-none shadow-2xl bg-white relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10" />
+                        <CardContent className="p-10 flex-1 flex flex-col justify-center space-y-8">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-primary/20" />
+                              <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest block truncate">
+                                {ev.calendarName}
+                              </span>
+                            </div>
+                            <h2 className="text-2xl font-headline leading-tight text-foreground/80 break-words line-clamp-4">
+                              {ev.title}
+                            </h2>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <div className="h-px w-12 bg-primary/10" />
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                              <Clock className="h-4 w-4 shrink-0" />
+                              {format(parseISO(ev.startAt), "M月d日(E) HH:mm", { locale: ja })}
+                            </div>
+                          </div>
 
-                      {current.description && (
-                        <p className="text-[11px] text-muted-foreground/60 leading-relaxed italic line-clamp-3">
-                          {current.description}
-                        </p>
-                      )}
-                    </CardContent>
-                    
-                    <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
-                      <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                        スワイプで分類
-                      </div>
-                    </div>
-                  </Card>
-                </motion.div>
+                          {ev.description && (
+                            <p className="text-[11px] text-muted-foreground/60 leading-relaxed italic line-clamp-3">
+                              {ev.description}
+                            </p>
+                          )}
+                        </CardContent>
+                        
+                        <div className="p-8 bg-primary/[0.01] flex justify-center border-t border-primary/[0.03]">
+                          <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
+                            スワイプで分類
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           </div>

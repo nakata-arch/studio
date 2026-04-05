@@ -132,8 +132,6 @@ export default function ReportPage() {
 
   if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
 
-  const current = events[0];
-
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
@@ -156,7 +154,7 @@ export default function ReportPage() {
                 <div className="flex items-center justify-between px-2">
                   <div className="flex items-center gap-2 text-primary/30">
                     <History className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">直近の報告一覧</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">最近の報告一覧</span>
                   </div>
                   <Link href="/events" className="text-[9px] font-bold text-primary/40 hover:text-primary transition-colors flex items-center gap-1">
                     すべて見る <ArrowRight className="h-2.5 w-2.5" />
@@ -194,71 +192,78 @@ export default function ReportPage() {
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
               {/* Swipe Hints */}
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse">
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
                 <Ban className="h-5 w-5 text-slate-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">中止</span>
               </div>
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
                 <Check className="h-5 w-5 text-emerald-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-emerald-500">できた</span>
               </div>
-              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse">
+              <div className="absolute -right-12 top-1/2 -translate-y-1/2 flex flex-col items-center opacity-30 animate-pulse z-0">
                 <X className="h-5 w-5 text-rose-400" />
                 <span className="text-[8px] font-bold uppercase tracking-widest text-rose-500">未達</span>
               </div>
 
               <AnimatePresence mode="popLayout">
-                <motion.div
-                  key={current.id}
-                  style={{ x, y, rotate, opacity, backgroundColor: cardBackground }}
-                  drag
-                  dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                  onDragEnd={handleDragEnd}
-                  exit={{ 
-                    x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
-                    y: exitDirection === 'up' ? -1000 : 0,
-                    opacity: 0,
-                    scale: 0.5,
-                    transition: { duration: 0.4 }
-                  }}
-                  whileDrag={{ scale: 1.05 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="absolute w-full h-full cursor-grab active:cursor-grabbing"
-                >
-                  <Card className="w-full h-full border-none shadow-2xl bg-inherit relative overflow-hidden rounded-[2.5rem] flex flex-col">
-                    <CardContent className="p-8 flex-1 flex flex-col space-y-6">
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
-                          <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{current.calendarName}</span>
-                        </div>
-                        <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-2">
-                          {current.title}
-                        </h2>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
-                          <Clock className="h-4 w-4 shrink-0" />
-                          {format(parseISO(current.startAt), "M月d日(E) HH:mm", { locale: ja })}
-                        </div>
-                      </div>
+                {events.slice(0, 2).reverse().map((ev, index) => {
+                  const isTop = index === (events.length > 1 ? 1 : 0);
+                  return (
+                    <motion.div
+                      key={ev.id}
+                      style={isTop ? { x, y, rotate, opacity, backgroundColor: cardBackground } : { scale: 0.95, opacity: 0.5 }}
+                      drag={isTop}
+                      dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                      onDragEnd={handleDragEnd}
+                      exit={{ 
+                        x: exitDirection === 'left' ? -1000 : exitDirection === 'right' ? 1000 : 0, 
+                        y: exitDirection === 'up' ? -1000 : 0,
+                        opacity: 0,
+                        scale: 0.5,
+                        transition: { duration: 0.4 }
+                      }}
+                      initial={isTop ? false : { scale: 0.9, opacity: 0 }}
+                      animate={{ scale: isTop ? 1 : 0.95, opacity: isTop ? 1 : 0.5 }}
+                      whileDrag={isTop ? { scale: 1.05 } : {}}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      className="absolute w-full h-full cursor-grab active:cursor-grabbing"
+                    >
+                      <Card className="w-full h-full border-none shadow-2xl bg-inherit relative overflow-hidden rounded-[2.5rem] flex flex-col">
+                        <CardContent className="p-8 flex-1 flex flex-col space-y-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/40 uppercase tracking-widest">
+                              <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{ev.calendarName}</span>
+                            </div>
+                            <h2 className="text-xl font-headline leading-snug text-foreground/80 break-words line-clamp-2">
+                              {ev.title}
+                            </h2>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground opacity-60 font-medium">
+                              <Clock className="h-4 w-4 shrink-0" />
+                              {format(parseISO(ev.startAt), "M月d日(E) HH:mm", { locale: ja })}
+                            </div>
+                          </div>
 
-                      <div className="flex-1 flex flex-col space-y-3">
-                        <Textarea 
-                          placeholder="どんな時間でしたか？" 
-                          value={memo[current.id] || ""} 
-                          onChange={(e) => setMemo({ ...memo, [current.id]: e.target.value })}
-                          onPointerDown={(e) => e.stopPropagation()} 
-                          className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
-                        />
-                      </div>
-                      
-                      <div className="pt-4 flex justify-center">
-                        <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
-                          左右または上へスワイプ
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                          <div className="flex-1 flex flex-col space-y-3">
+                            <Textarea 
+                              placeholder="どんな時間でしたか？" 
+                              value={memo[ev.id] || ""} 
+                              onChange={(e) => setMemo({ ...memo, [ev.id]: e.target.value })}
+                              onPointerDown={(e) => e.stopPropagation()} 
+                              className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
+                            />
+                          </div>
+                          
+                          <div className="pt-4 flex justify-center">
+                            <div className="text-[9px] font-bold text-primary/20 uppercase tracking-[0.4em]">
+                              左右または上へスワイプ
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           </div>
