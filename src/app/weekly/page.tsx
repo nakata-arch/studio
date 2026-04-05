@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -19,7 +20,8 @@ import {
   Wand2,
   Clock,
   MessageSquare,
-  BarChart3
+  BarChart3,
+  LogIn
 } from "lucide-react";
 import { 
   startOfWeek, 
@@ -46,6 +48,7 @@ import { QUADRANTS } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
 
 type MainTabType = 'diary' | 'aggregate';
 type SubTabType = 'weekly' | 'monthly' | 'yearly';
@@ -112,6 +115,7 @@ export default function DiaryPage() {
       toast({ title: "保存しました", description: "日記を更新しました。" });
     } catch (e) {
       console.error("Save daily memo failed:", e);
+      toast({ variant: "destructive", title: "エラー", description: "保存に失敗しました。" });
     } finally {
       setIsSavingMemo(false);
     }
@@ -182,14 +186,18 @@ export default function DiaryPage() {
       const start = startOfDay(selectedDate);
       const end = endOfDay(selectedDate);
       return allEvents.filter(e => {
-        const date = parseISO(e.startAt);
-        return isWithinInterval(date, { start, end });
+        try {
+          const date = parseISO(e.startAt);
+          return isWithinInterval(date, { start, end });
+        } catch { return false; }
       });
     }
     const range = getPeriodRange(subTab, selectedDate);
     return allEvents.filter(e => {
-      const date = parseISO(e.startAt);
-      return isWithinInterval(date, range);
+      try {
+        const date = parseISO(e.startAt);
+        return isWithinInterval(date, range);
+      } catch { return false; }
     });
   }, [allEvents, mainTab, subTab, selectedDate]);
 
@@ -204,11 +212,12 @@ export default function DiaryPage() {
 
   useEffect(() => {
     const fetchAiSummary = async () => {
-      if (periodEvents.length === 0) {
+      if (!user || periodEvents.length === 0) {
         setAiResult(null);
         return;
       }
       setIsAiLoading(true);
+      console.log("weekly:ai-summary-start");
       
       let targetPeriodLabel = "";
       let periodType: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'weekly';
@@ -241,8 +250,9 @@ export default function DiaryPage() {
           userReflection: mainTab === 'diary' ? dailyMemo : undefined,
         });
         setAiResult(result);
+        console.log("weekly:ai-summary-done");
       } catch (err) {
-        console.error("AI Summary failed:", err);
+        console.error("weekly:ai-summary-error", err);
       } finally {
         setIsAiLoading(false);
       }
@@ -261,10 +271,26 @@ export default function DiaryPage() {
     return format(selectedDate, "E", { locale: ja });
   }, [selectedDate]);
 
-  if (isUserLoading || (isEventsLoading && !allEvents)) {
+  if (isUserLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">ユーザー情報を確認しています...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-background p-8 text-center gap-6">
+        <div className="space-y-2 opacity-40">
+          <BookOpen className="h-12 w-12 mx-auto" />
+          <p className="text-sm font-bold">ログインが必要です</p>
+          <p className="text-[10px] uppercase tracking-widest">Please sign in to write diary</p>
+        </div>
+        <Button asChild className="rounded-full px-8 gap-2 font-bold">
+          <Link href="/"><LogIn className="h-4 w-4" /> ログイン画面へ</Link>
+        </Button>
       </div>
     );
   }
@@ -403,7 +429,11 @@ export default function DiaryPage() {
             {/* その日の予定一覧 */}
             <div className="space-y-4">
               <h3 className="text-[10px] font-bold text-primary/40 uppercase tracking-[0.2em] px-2">今日の歩み</h3>
-              {periodEvents.length === 0 ? (
+              {isEventsLoading ? (
+                <div className="flex py-12 justify-center">
+                  <Loader2 className="animate-spin opacity-10 h-6 w-6 text-primary" />
+                </div>
+              ) : periodEvents.length === 0 ? (
                 <div className="text-center py-12 opacity-30 space-y-3">
                   <Clock className="h-8 w-8 mx-auto" />
                   <p className="text-xs">予定はありません</p>

@@ -17,10 +17,13 @@ import {
   ClipboardCheck,
   ListTodo,
   ExternalLink,
-  AlertTriangle
+  AlertTriangle,
+  Loader2,
+  LogIn
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -32,12 +35,12 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
+  const [isCountsLoading, setIsCountsLoading] = useState(false);
   const [isPreviewEnv, setIsPreviewEnv] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hostname = window.location.hostname;
-      // プレビュー環境（Google認証が制限される環境）の厳密な判定
       const isStudioPreview = 
         hostname.includes("cloudworkstations.dev") || 
         hostname === "studio.firebase.google.com";
@@ -48,6 +51,8 @@ export default function SettingsPage() {
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
+    setIsCountsLoading(true);
+    console.log("settings:fetch-counts-start");
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
@@ -57,14 +62,18 @@ export default function SettingsPage() {
         report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
         classify: all.filter(e => !e.quadrantCategory).length
       });
+      console.log("settings:fetch-counts-done");
     } catch (e) {
-      console.error("Count fetch failed", e);
+      console.error("settings:fetch-counts-error", e);
+    } finally {
+      setIsCountsLoading(false);
     }
   }, [user, db]);
 
   const processSync = useCallback(async (accessToken: string) => {
     if (!user) return;
     setSyncStatus('saving');
+    console.log("settings:sync-start");
     try {
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
@@ -75,13 +84,7 @@ export default function SettingsPage() {
       const body = await response.json();
       
       if (!response.ok) {
-        const errorMsg = body.error?.message || response.statusText;
-        if (errorMsg.includes("Google Calendar API has not been used") || errorMsg.includes("disabled")) {
-          setErrorDetails("Google Cloud ConsoleでCalendar APIを有効にする必要があります。");
-          setSyncStatus('failed');
-          return;
-        }
-        throw new Error(`APIエラー: ${errorMsg}`);
+        throw new Error(body.error?.message || response.statusText);
       }
 
       const items = body.items || [];
@@ -113,8 +116,9 @@ export default function SettingsPage() {
       toast({ title: "整いました", description: `${items.length}件の予定を同期しました。` });
       fetchCounts();
       setTimeout(() => setSyncStatus('idle'), 3000);
+      console.log("settings:sync-done");
     } catch (err: any) {
-      console.error("Sync Error:", err);
+      console.error("settings:sync-error", err);
       setSyncStatus('failed');
       setErrorDetails(err.message);
       toast({ variant: "destructive", title: "同期できませんでした", description: err.message });
@@ -122,13 +126,9 @@ export default function SettingsPage() {
   }, [user, db, toast, fetchCounts]);
 
   useEffect(() => {
-    if (!isUserLoading && !user) router.push("/");
-  }, [user, isUserLoading, router]);
-
-  useEffect(() => {
-    if (user) {
+    console.log("settings:init", { isUserLoading, hasUser: !!user });
+    if (!isUserLoading && user) {
       fetchCounts();
-      // Handle redirect result specifically for syncing (re-authentication)
       getRedirectResult(auth).then((result) => {
         if (result) {
           const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -138,10 +138,10 @@ export default function SettingsPage() {
           }
         }
       }).catch((error) => {
-        console.error("Redirect sync failed:", error);
+        console.error("settings:redirect-sync-error", error);
       });
     }
-  }, [user, auth, fetchCounts, processSync]);
+  }, [user, isUserLoading, auth, fetchCounts, processSync]);
 
   const handleSyncTrigger = () => {
     if (!user) return;
@@ -149,7 +149,7 @@ export default function SettingsPage() {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "カレンダー同期のための再認証は、hosted.app / web.app などの公開済みドメインでのみ動作します。",
+        description: "本番ドメイン（*.hosted.app）でお試しください。",
       });
       return;
     }
@@ -159,16 +159,38 @@ export default function SettingsPage() {
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
     signInWithRedirect(auth, provider).catch((error) => {
-      console.error("Redirect sync trigger failed:", error);
+      console.error("settings:redirect-trigger-error", error);
       setSyncStatus('failed');
     });
   };
 
-  if (isUserLoading || !user) return null;
+  if (isUserLoading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">ユーザー情報を確認しています...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-background p-8 text-center gap-6">
+        <div className="space-y-2 opacity-40">
+          <UserIcon className="h-12 w-12 mx-auto" />
+          <p className="text-sm font-bold">ログインが必要です</p>
+          <p className="text-[10px] uppercase tracking-widest">Please sign in to access settings</p>
+        </div>
+        <Button asChild className="rounded-full px-8 gap-2 font-bold">
+          <Link href="/"><LogIn className="h-4 w-4" /> ログイン画面へ</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32">
-      <header className="p-8 pt-16 flex justify-between items-center" />
+      <header className="p-8 pt-16" />
 
       <main className="px-8 space-y-10">
         <div className="flex items-center gap-4">
@@ -188,7 +210,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                Google ログインを伴うカレンダー同期は、セキュリティ制限のためプレビュー環境では動作しません。`firebase deploy` で本番環境（*.hosted.app）に公開してから実行してください。
+                カレンダー同期には本番環境（*.hosted.app）での操作が必要です。
               </p>
             </div>
           </div>
@@ -201,7 +223,10 @@ export default function SettingsPage() {
                 <ClipboardCheck className="h-3.5 w-3.5" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">未報告</span>
               </div>
-              <p className="text-3xl font-bold tracking-tighter text-primary/80">{counts.report}<span className="text-xs font-normal ml-1 opacity-40">件</span></p>
+              <p className="text-3xl font-bold tracking-tighter text-primary/80">
+                {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.report}
+                <span className="text-xs font-normal ml-1 opacity-40">件</span>
+              </p>
             </CardContent>
           </Card>
           <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
@@ -210,7 +235,10 @@ export default function SettingsPage() {
                 <ListTodo className="h-3.5 w-3.5" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">未分類</span>
               </div>
-              <p className="text-3xl font-bold tracking-tighter text-primary/80">{counts.classify}<span className="text-xs font-normal ml-1 opacity-40">件</span></p>
+              <p className="text-3xl font-bold tracking-tighter text-primary/80">
+                {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.classify}
+                <span className="text-xs font-normal ml-1 opacity-40">件</span>
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -226,20 +254,6 @@ export default function SettingsPage() {
             <RefreshCw className={(syncStatus === 'syncing' || syncStatus === 'saving') ? "animate-spin h-4 w-4" : "h-4 w-4 opacity-40"} />
             カレンダーを同期する
           </Button>
-
-          {syncStatus === 'failed' && errorDetails?.includes("APIを有効にする") && (
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full h-12 rounded-xl gap-2 text-xs"
-              asChild
-            >
-              <a href={`https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=34460193112`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-3 w-3" />
-                Google Cloud ConsoleでAPIを有効化する
-              </a>
-            </Button>
-          )}
 
           <Button 
             type="button"

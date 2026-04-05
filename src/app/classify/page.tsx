@@ -8,7 +8,7 @@ import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { QUADRANTS } from "@/lib/mock-data";
-import { Loader2, Clock, History, LayoutGrid, ArrowRight, Sparkles } from "lucide-react";
+import { Loader2, Clock, History, LayoutGrid, ArrowRight, Sparkles, LogIn } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -16,6 +16,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { QuotePopup } from "@/components/QuotePopup";
 import Link from "next/link";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import { Button } from "@/components/ui/button";
 
 export default function ClassifyPage() {
   const db = useFirestore();
@@ -26,10 +27,15 @@ export default function ClassifyPage() {
   const [exitDirection, setExitDirection] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
   const fetchEvents = async () => {
-    if (!user) return;
-    const eventsRef = collection(db, "users", user.uid, "events");
+    console.log("classify:fetch-start");
+    if (!user) {
+      console.log("classify:fetch-abort (no user)");
+      setLoading(false);
+      return;
+    }
 
     try {
+      const eventsRef = collection(db, "users", user.uid, "events");
       const qAll = query(eventsRef, orderBy("startAt", "asc"));
       const snapAll = await getDocs(qAll);
       const all = snapAll.docs.map(d => d.data() as AppEvent);
@@ -44,29 +50,25 @@ export default function ClassifyPage() {
           .map(d => d.data() as AppEvent)
           .filter(ev => !!ev.quadrantCategory)
       );
+      console.log(`classify:fetch-done (unclassified: ${unclassified.length})`);
 
     } catch (err: any) {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventsRef.path, operation: 'list' }));
+      console.error("classify:error", err);
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: "events", operation: 'list' }));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!isUserLoading && user) fetchEvents();
-  }, [user, isUserLoading, db]);
+    console.log("classify:init", { isUserLoading, hasUser: !!user });
+    if (!isUserLoading) {
+      fetchEvents();
+    }
+  }, [user, isUserLoading]);
 
   const currentEvent = events[0];
   const nextEvent = events[1];
-
-  // デバッグログ
-  useEffect(() => {
-    if (events.length > 0) {
-      console.log('ClassifyPage: events.length', events.length);
-      console.log('ClassifyPage: currentCard', events[0]?.id);
-      console.log('ClassifyPage: nextCard', events[1]?.id);
-    }
-  }, [events]);
 
   // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
@@ -102,18 +104,15 @@ export default function ClassifyPage() {
   const handleClassify = (category: QuadrantCategory, xDir: number, yDir: number) => {
     if (!currentEvent || !user) return;
     
-    // 次のカードのためにMotionValueを即座にリセット
     x.set(0);
     y.set(0);
 
     const event = currentEvent;
     setExitDirection({ x: xDir, y: yDir });
 
-    // UIを即座に進める
     setEvents(prev => prev.slice(1));
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
 
-    // 非同期でDB更新
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
       .catch(err => {
@@ -136,19 +135,42 @@ export default function ClassifyPage() {
     else if (ox > 0 && oy < 0) handleClassify('not_urgent_important', 1000, -1000);
     else if (ox < 0 && oy > 0) handleClassify('urgent_not_important', -1000, 1000);
     else if (ox > 0 && oy > 0) handleClassify('not_urgent_not_important', 1000, 1000);
-    
-    // 这里不再在handleDragEnd末尾显式置0，因为handleClassify内部会置0
-    // 这样能保证新卡片在渲染时x/y已经是0
   };
 
-  if (isUserLoading || loading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" /></div>;
+  if (isUserLoading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">ユーザー情報を確認しています...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-background p-8 text-center gap-6">
+        <div className="space-y-2 opacity-40">
+          <LayoutGrid className="h-12 w-12 mx-auto" />
+          <p className="text-sm font-bold">ログインが必要です</p>
+          <p className="text-[10px] uppercase tracking-widest">Please sign in to classify events</p>
+        </div>
+        <Button asChild className="rounded-full px-8 gap-2 font-bold">
+          <Link href="/"><LogIn className="h-4 w-4" /> ログイン画面へ</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-32 overflow-hidden">
       <QuotePopup />
       
       <main className="flex-1 px-8 flex flex-col items-center pt-20 relative">
-        {!currentEvent ? (
+        {loading ? (
+          <div className="flex py-32 justify-center">
+            <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
+          </div>
+        ) : !currentEvent ? (
           <div className="w-full max-w-sm space-y-10 animate-in fade-in duration-700">
             <div className="text-center space-y-4 opacity-60 pt-10">
               <div className="w-16 h-16 bg-primary/5 rounded-[2.5rem] flex items-center justify-center mx-auto border border-primary/10">
@@ -201,7 +223,6 @@ export default function ClassifyPage() {
             </div>
 
             <div className="relative w-full aspect-[3/4] flex items-center justify-center">
-              {/* 背面: プレビュー（操作不可） */}
               {nextEvent && (
                 <div 
                   key={`next-${nextEvent.id}`}
@@ -224,7 +245,6 @@ export default function ClassifyPage() {
                 </div>
               )}
 
-              {/* 前面: 操作可能カード */}
               <AnimatePresence initial={false}>
                 <motion.div
                   key={currentEvent.id}
@@ -237,7 +257,7 @@ export default function ClassifyPage() {
                     y: exitDirection.y,
                     opacity: 0,
                     scale: 0.5,
-                    pointerEvents: 'none', // 消えていく最中のカードが背後の操作を遮らないようにする
+                    pointerEvents: 'none',
                     transition: { duration: 0.4 }
                   }}
                   initial={{ scale: 0.9, opacity: 0 }}
