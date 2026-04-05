@@ -311,7 +311,7 @@ export default function ReportPage() {
                           value={memo[currentEvent.id] || ""} 
                           onChange={(e) => setMemo({ ...memo, [currentEvent.id]: e.target.value })}
                           onPointerDown={(e) => e.stopPropagation()} 
-                          className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl focus-visible:ring-primary/5 resize-none italic"
+                          className="flex-1 text-sm bg-primary/[0.02] border-none rounded-2xl resize-none text-sm leading-relaxed italic placeholder:text-muted-foreground/30 focus-visible:ring-primary/5"
                         />
                       </div>
                       
