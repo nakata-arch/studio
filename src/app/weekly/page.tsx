@@ -321,7 +321,7 @@ export default function DiaryPage() {
               ))}
             </div>
 
-            {/* AI分析表示 (日記タブでも表示するように追加) */}
+            {/* AIの眼差し */}
             {aiResult && !isAiLoading && (
               <Card className="border-none shadow-sm bg-primary/[0.02] rounded-[2rem] overflow-hidden">
                 <CardContent className="p-6 space-y-4">

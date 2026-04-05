@@ -72,14 +72,17 @@ const aiWeeklyReportSummaryPrompt = ai.definePrompt({
 - やさしい振り返り
 - 最後に問いかけ
 
+指針：
+- 断定を避け、「〜かもしれません」「〜のようです」といった寄り添う表現を使ってください。
+- できた割合が低い場合は「少し無理な予定が多かったかもしれません」と優しく伝え、高い場合は「一つひとつ丁寧に進められていたようです」と肯定してください。
+- 緊急の予定が多い場合は「少し忙しさに追われていたかもしれません」と共感し、重要（非緊急）が少ない場合は「大切なことに使える時間が、少し少なかったかもしれません」と気づきを促してください。
+
 禁止:
 - 強い否定
 - 指導的すぎる表現
 
 出力はJSON形式で、trendSummary, reflection, question の3つのフィールドに格納してください。`,
 });
-
-const aiWeeklyReportSummaryPromptWithSafety = aiWeeklyReportSummaryPrompt;
 
 const aiWeeklyReportSummaryFlow = ai.defineFlow(
   {
@@ -88,7 +91,7 @@ const aiWeeklyReportSummaryFlow = ai.defineFlow(
     outputSchema: AiWeeklyReportSummaryOutputSchema,
   },
   async (input) => {
-    const { output } = await aiWeeklyReportSummaryPromptWithSafety(input);
+    const { output } = await aiWeeklyReportSummaryPrompt(input);
     if (!output) {
       throw new Error('Failed to generate report summary.');
     }
