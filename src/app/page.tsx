@@ -22,7 +22,8 @@ export default function LandingPage() {
 
   useEffect(() => {
     const handleRedirect = async () => {
-      // プレビュー環境では Firebase Auth API の呼び出し（getRedirectResult等）を避ける
+      // Firebase Studio プレビュー環境では getRedirectResult を呼び出さない
+      // APIキーエラーやドメイン制限によるエラーを防ぐため
       if (isPreviewMode) {
         console.log("login:preview-mode-active (skipping redirect check)");
         return;
@@ -35,13 +36,14 @@ export default function LandingPage() {
         }
       } catch (error: any) {
         console.error("login:redirect-error", error);
+        // SDKエラーが頻発するため、プレビュー環境以外でも特定の通知は抑制
         if (error.code !== "auth/operation-not-allowed" && error.code !== "auth/api-key-not-valid") {
            setErrorMessage("ログインに失敗しました。もう一度お試しください。");
         }
       }
     };
     handleRedirect();
-  }, [isPreviewMode]); // isPreviewMode の確定を待って実行
+  }, [isPreviewMode]);
 
   const handleGoogleLogin = async () => {
     setErrorMessage("");
@@ -59,9 +61,9 @@ export default function LandingPage() {
 
   const handlePreviewBypass = () => {
     setLoading(true);
-    // Firebase Auth API を呼ばず、ダミーセッションを開始
+    // SDK メソッドを一切呼ばず、内部ステートのみ更新する
     loginAsMockUser();
-    console.log("login:bypass-success (mock session)");
+    console.log("login:bypass-success (mock session started)");
   };
 
   if (isUserLoading) {
@@ -118,7 +120,7 @@ export default function LandingPage() {
 
           {isPreviewMode && (
             <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 text-[11px] leading-relaxed text-amber-700/80 font-medium">
-              <span className="font-bold">Studio プレビュー制限:</span> 現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメイン（*.hosted.app）をご利用ください。
+              <span className="font-bold">Studio プレビュー制限:</span> 現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメインをご利用ください。
             </div>
           )}
 

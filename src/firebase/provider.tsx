@@ -98,7 +98,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       // Restore mock session if exists
       if (isStudioPreview && sessionStorage.getItem('isMockLoggedIn') === 'true') {
         setMockUser(DUMMY_USER);
-        setUserAuthState(prev => ({ ...prev, isUserLoading: false }));
+        setUserAuthState({ user: DUMMY_USER, isUserLoading: false, userError: null });
       }
     }
   }, []);
@@ -109,24 +109,19 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       return;
     }
 
-    // 既にモックユーザーでログイン済みの場合は SDK のリスナーは後回しにする
-    if (mockUser) {
+    // Don't setup SDK listener if we are in a mock session
+    if (mockUser || sessionStorage.getItem('isMockLoggedIn') === 'true') {
       return;
     }
 
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
-        // SDK からのステート変更はモックユーザーがいない時のみ反映
-        if (!mockUser && sessionStorage.getItem('isMockLoggedIn') !== 'true') {
-          setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
-        }
+        setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => {
-        if (!mockUser) {
-          console.error("FirebaseProvider: onAuthStateChanged error:", error);
-          setUserAuthState({ user: null, isUserLoading: false, userError: error });
-        }
+        console.error("FirebaseProvider: onAuthStateChanged error:", error);
+        setUserAuthState({ user: null, isUserLoading: false, userError: error });
       }
     );
     return () => unsubscribe();
@@ -143,7 +138,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   const contextValue = useMemo((): FirebaseContextState => {
     const servicesAvailable = !!(firebaseApp && firestore && auth);
     const currentUser = mockUser || userAuthState.user;
-    const loading = (mockUser || (isPreviewMode && sessionStorage.getItem('isMockLoggedIn') === 'true')) ? false : userAuthState.isUserLoading;
+    const loading = userAuthState.isUserLoading;
 
     return {
       areServicesAvailable: servicesAvailable,

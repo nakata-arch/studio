@@ -16,7 +16,6 @@ import {
   User as UserIcon,
   ClipboardCheck,
   ListTodo,
-  ExternalLink,
   AlertTriangle,
   Loader2,
   LogIn
@@ -33,7 +32,6 @@ export default function SettingsPage() {
   const { toast } = useToast();
   
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
-  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
   const [isCountsLoading, setIsCountsLoading] = useState(false);
 
@@ -67,10 +65,7 @@ export default function SettingsPage() {
       );
 
       const body = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(body.error?.message || response.statusText);
-      }
+      if (!response.ok) throw new Error(body.error?.message || response.statusText);
 
       const items = body.items || [];
       const now = Date.now();
@@ -83,7 +78,6 @@ export default function SettingsPage() {
           googleEventId: ev.id,
           title: ev.summary || "(タイトルなし)",
           description: ev.description || "",
-          location: ev.location || "",
           startAt: ev.start?.dateTime || ev.start?.date,
           endAt: ev.end?.dateTime || ev.end?.date,
           calendarName: "Google Calendar",
@@ -104,8 +98,7 @@ export default function SettingsPage() {
     } catch (err: any) {
       console.error("settings:sync-error", err);
       setSyncStatus('failed');
-      setErrorDetails(err.message);
-      toast({ variant: "destructive", title: "同期できませんでした", description: err.message });
+      toast({ variant: "destructive", title: "同期失敗", description: err.message });
     }
   }, [user, db, toast, fetchCounts]);
 
@@ -113,10 +106,8 @@ export default function SettingsPage() {
     if (!isUserLoading && user) {
       fetchCounts();
       
-      // プレビュー環境（モックログイン中）は SDK のリダイレクト処理を避ける
-      if (isPreviewMode && sessionStorage.getItem('isMockLoggedIn') === 'true') {
-        return;
-      }
+      // プレビュー環境でのリダイレクトチェックをスキップ (Auth API 呼び出し防止)
+      if (isPreviewMode) return;
 
       getRedirectResult(auth).then((result) => {
         if (result) {
@@ -134,19 +125,16 @@ export default function SettingsPage() {
 
   const handleSyncTrigger = () => {
     if (!user) return;
-    
-    // プレビューモード（モックログイン）では Google 認証を伴う同期は不可
-    if (sessionStorage.getItem('isMockLoggedIn') === 'true' || isPreviewMode) {
+    if (isPreviewMode) {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "Googleログイン（匿名認証以外）が必要です。本番ドメインでお試しください。",
+        description: "Google同期にはデプロイ済み環境でのログインが必要です。",
       });
       return;
     }
 
     setSyncStatus('syncing');
-    setErrorDetails(null);
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
     signInWithRedirect(auth, provider).catch((error) => {
@@ -170,7 +158,6 @@ export default function SettingsPage() {
         <div className="space-y-2 opacity-40">
           <UserIcon className="h-12 w-12 mx-auto" />
           <p className="text-sm font-bold">ログインが必要です</p>
-          <p className="text-[10px] uppercase tracking-widest">Please sign in to access settings</p>
         </div>
         <Button asChild className="rounded-full px-8 gap-2 font-bold">
           <Link href="/"><LogIn className="h-4 w-4" /> ログイン画面へ</Link>
@@ -190,18 +177,18 @@ export default function SettingsPage() {
             <AvatarFallback><UserIcon className="h-8 w-8 opacity-20" /></AvatarFallback>
           </Avatar>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || (isPreviewMode ? "Preview User" : "User")}</h3>
+            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || "User"}</h3>
             <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email || "Temporary Account"}</p>
           </div>
         </div>
 
-        {(isPreviewMode || sessionStorage.getItem('isMockLoggedIn') === 'true') && (
+        {isPreviewMode && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="text-xs font-bold text-amber-900">プレビューモードで実行中</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                カレンダー同期には Google 認証が必要です。本番環境（*.hosted.app）での操作をお勧めします。
+                現在の環境では Google 同期が制限されています。
               </p>
             </div>
           </div>
@@ -251,6 +238,7 @@ export default function SettingsPage() {
             onClick={() => {
               sessionStorage.removeItem('isMockLoggedIn');
               auth.signOut();
+              window.location.reload();
             }}
             variant="ghost" 
             className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5"
