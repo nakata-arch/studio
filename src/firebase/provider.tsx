@@ -54,8 +54,9 @@ export interface UserHookResult {
 export const FirebaseContext = createContext<FirebaseContextState | undefined>(undefined);
 
 // Dummy user for preview mode
+export const DUMMY_USER_ID = 'preview-user-123';
 const DUMMY_USER = {
-  uid: 'preview-user-123',
+  uid: DUMMY_USER_ID,
   displayName: 'Preview User',
   email: 'preview@example.com',
   photoURL: 'https://picsum.photos/seed/user/200/200',

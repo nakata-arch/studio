@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
-import { useUser, useFirestore } from "@/firebase";
+import { useUser, useFirestore, DUMMY_USER_ID } from "@/firebase";
 import { collection, query, orderBy, getDocs, where, limit, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -25,6 +26,7 @@ import { ja } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { PREVIEW_EVENTS } from "@/lib/preview-data";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -46,12 +48,18 @@ export default function ReportPage() {
       return;
     }
 
+    if (user.uid === DUMMY_USER_ID) {
+      console.log("report:fetch-mock");
+      setEvents(PREVIEW_EVENTS.filter(e => !e.reportStatus));
+      setLoading(false);
+      return;
+    }
+
     try {
       console.log("report:data-start");
       const now = new Date().toISOString();
       const eventsRef = collection(db, "users", user.uid, "events");
       
-      // 未報告かつ過去の予定を取得
       const q = query(
         eventsRef,
         where("startAt", "<", now),
@@ -62,7 +70,7 @@ export default function ReportPage() {
       const snap = await getDocs(q);
       const fetched = snap.docs
         .map(d => d.data() as AppEvent)
-        .filter(ev => !ev.reportStatus); // reportStatusがないものに限定
+        .filter(ev => !ev.reportStatus);
       
       setEvents(fetched);
       console.log(`report:data-done (count: ${fetched.length})`);
@@ -88,13 +96,17 @@ export default function ReportPage() {
     
     setIsSaving(true);
     const event = currentEvent;
-    const eventDoc = doc(db, "users", user.uid, "events", event.id);
 
-    // UIを先に更新（即座に次のカードへ）
     setEvents(prev => prev.slice(1));
     setMemo("");
 
+    if (user.uid === DUMMY_USER_ID) {
+      setIsSaving(false);
+      return;
+    }
+
     try {
+      const eventDoc = doc(db, "users", user.uid, "events", event.id);
       await updateDoc(eventDoc, {
         reportStatus: status,
         reportMemo: memo,
@@ -104,8 +116,7 @@ export default function ReportPage() {
       console.log(`report:saved (${status})`);
     } catch (err: any) {
       console.error("report:save-error", err);
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: eventDoc.path, operation: 'update' }));
-      // 失敗した場合はトースト（ユーザーへのフィードバック）
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: "events-update", operation: 'update' }));
       toast({ variant: "destructive", title: "保存に失敗しました" });
     } finally {
       setIsSaving(false);

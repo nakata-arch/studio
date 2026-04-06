@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFirestore, useUser } from "@/firebase";
+import { useFirestore, useUser, DUMMY_USER_ID } from "@/firebase";
 import { collection, query, getDocs, doc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { AppEvent, QuadrantCategory } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -14,6 +14,7 @@ import { ja } from "date-fns/locale";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { QuotePopup } from "@/components/QuotePopup";
+import { PREVIEW_EVENTS } from "@/lib/preview-data";
 import Link from "next/link";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,14 @@ export default function ClassifyPage() {
     console.log("classify:fetch-start");
     if (!user) {
       console.log("classify:fetch-abort (no user)");
+      setLoading(false);
+      return;
+    }
+
+    if (user.uid === DUMMY_USER_ID) {
+      console.log("classify:fetch-mock");
+      setEvents(PREVIEW_EVENTS.filter(e => !e.quadrantCategory));
+      setRecentClassified(PREVIEW_EVENTS.filter(e => !!e.quadrantCategory));
       setLoading(false);
       return;
     }
@@ -70,7 +79,6 @@ export default function ClassifyPage() {
   const currentEvent = events[0];
   const nextEvent = events[1];
 
-  // ドラッグ制御用 Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
@@ -112,6 +120,8 @@ export default function ClassifyPage() {
 
     setEvents(prev => prev.slice(1));
     setRecentClassified(prev => [{ ...event, quadrantCategory: category }, ...prev].slice(0, 30));
+
+    if (user.uid === DUMMY_USER_ID) return; // Skip Firestore update in mock mode
 
     const eventDoc = doc(db, "users", user.uid, "events", event.id);
     updateDoc(eventDoc, { quadrantCategory: category, updatedAt: Date.now() })
