@@ -2,20 +2,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRedirectResult, GoogleAuthProvider, signInWithRedirect, signInAnonymously } from "firebase/auth";
+import { getRedirectResult, GoogleAuthProvider, signInWithRedirect } from "firebase/auth";
 import { auth } from "@/firebase";
 import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, LogIn, ArrowRight } from "lucide-react";
 
 export default function LandingPage() {
-  const { user, isUserLoading, isPreviewMode } = useUser();
+  const { user, isUserLoading, isPreviewMode, loginAsMockUser } = useUser();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    // Redirect to settings if already logged in (including anonymous bypass)
     if (user && !isUserLoading) {
       router.replace("/settings");
     }
@@ -30,7 +29,6 @@ export default function LandingPage() {
         }
       } catch (error: any) {
         console.error("login:redirect-error", error);
-        // Don't show error for configuration issues in preview
         if (error.code !== "auth/operation-not-allowed" && error.code !== "auth/api-key-not-valid") {
            setErrorMessage("ログインに失敗しました。もう一度お試しください。");
         }
@@ -53,18 +51,11 @@ export default function LandingPage() {
     }
   };
 
-  const handlePreviewBypass = async () => {
-    setErrorMessage("");
-    try {
-      setLoading(true);
-      // Trigger anonymous login for preview bypass
-      await signInAnonymously(auth);
-      console.log("login:bypass-success (anonymous)");
-    } catch (error) {
-      console.error("login:bypass-error", error);
-      setErrorMessage("プレビューアクセスの開始に失敗しました。");
-      setLoading(false);
-    }
+  const handlePreviewBypass = () => {
+    setLoading(true);
+    // Directly trigger mock login instead of Firebase Auth API
+    loginAsMockUser();
+    console.log("login:bypass-success (mock session)");
   };
 
   if (isUserLoading) {
@@ -77,7 +68,6 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10 relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none opacity-[0.03] z-0">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full blur-[120px]" />
@@ -122,7 +112,7 @@ export default function LandingPage() {
 
           {isPreviewMode && (
             <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 text-[11px] leading-relaxed text-amber-700/80 font-medium">
-              <span className="font-bold">Studio プレビュー制限:</span> 現在の環境では Google ログインがブロックされるため、開発用の一時的な ID でログインします。カレンダー同期を試すには、デプロイ済みのドメイン（*.hosted.app）をご利用ください。
+              <span className="font-bold">Studio プレビュー制限:</span> 現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメイン（*.hosted.app）をご利用ください。
             </div>
           )}
 
