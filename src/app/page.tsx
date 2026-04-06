@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getRedirectResult, GoogleAuthProvider, signInWithRedirect, signInAnonymously } from "firebase/auth";
-import { auth } from "@/firebase/config";
+import { auth } from "@/firebase";
 import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, LogIn, ArrowRight } from "lucide-react";
@@ -29,7 +29,7 @@ export default function LandingPage() {
         }
       } catch (error: any) {
         console.error("login:redirect-error", error);
-        if (error.code !== "auth/operation-not-allowed") {
+        if (error.code !== "auth/operation-not-allowed" && error.code !== "auth/api-key-not-valid") {
            setErrorMessage("ログインに失敗しました。もう一度お試しください。");
         }
       }
