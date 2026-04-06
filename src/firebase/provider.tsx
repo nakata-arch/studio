@@ -98,6 +98,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       // Restore mock session if exists
       if (isStudioPreview && sessionStorage.getItem('isMockLoggedIn') === 'true') {
         setMockUser(DUMMY_USER);
+        setUserAuthState(prev => ({ ...prev, isUserLoading: false }));
       }
     }
   }, []);
@@ -108,11 +109,16 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       return;
     }
 
+    // 既にモックユーザーでログイン済みの場合は SDK のリスナーは後回しにする
+    if (mockUser) {
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
-        // Only set real user if not in mock mode
-        if (!mockUser) {
+        // SDK からのステート変更はモックユーザーがいない時のみ反映
+        if (!mockUser && sessionStorage.getItem('isMockLoggedIn') !== 'true') {
           setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
         }
       },
@@ -137,7 +143,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   const contextValue = useMemo((): FirebaseContextState => {
     const servicesAvailable = !!(firebaseApp && firestore && auth);
     const currentUser = mockUser || userAuthState.user;
-    const loading = mockUser ? false : userAuthState.isUserLoading;
+    const loading = (mockUser || (isPreviewMode && sessionStorage.getItem('isMockLoggedIn') === 'true')) ? false : userAuthState.isUserLoading;
 
     return {
       areServicesAvailable: servicesAvailable,

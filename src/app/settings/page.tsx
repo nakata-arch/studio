@@ -112,6 +112,12 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!isUserLoading && user) {
       fetchCounts();
+      
+      // プレビュー環境（モックログイン中）は SDK のリダイレクト処理を避ける
+      if (isPreviewMode && sessionStorage.getItem('isMockLoggedIn') === 'true') {
+        return;
+      }
+
       getRedirectResult(auth).then((result) => {
         if (result) {
           const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -124,13 +130,13 @@ export default function SettingsPage() {
         console.error("settings:redirect-sync-error", error);
       });
     }
-  }, [user, isUserLoading, auth, fetchCounts, processSync]);
+  }, [user, isUserLoading, auth, fetchCounts, processSync, isPreviewMode]);
 
   const handleSyncTrigger = () => {
     if (!user) return;
     
-    // Disable sync trigger in preview bypass mode (anonymous auth)
-    if (user.isAnonymous || isPreviewMode) {
+    // プレビューモード（モックログイン）では Google 認証を伴う同期は不可
+    if (sessionStorage.getItem('isMockLoggedIn') === 'true' || isPreviewMode) {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
@@ -184,12 +190,12 @@ export default function SettingsPage() {
             <AvatarFallback><UserIcon className="h-8 w-8 opacity-20" /></AvatarFallback>
           </Avatar>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || (user.isAnonymous ? "Preview User" : "User")}</h3>
+            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || (isPreviewMode ? "Preview User" : "User")}</h3>
             <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email || "Temporary Account"}</p>
           </div>
         </div>
 
-        {(isPreviewMode || user.isAnonymous) && (
+        {(isPreviewMode || sessionStorage.getItem('isMockLoggedIn') === 'true') && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -242,7 +248,10 @@ export default function SettingsPage() {
 
           <Button 
             type="button"
-            onClick={() => auth.signOut()}
+            onClick={() => {
+              sessionStorage.removeItem('isMockLoggedIn');
+              auth.signOut();
+            }}
             variant="ghost" 
             className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5"
           >

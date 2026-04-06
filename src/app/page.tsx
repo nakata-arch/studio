@@ -22,6 +22,12 @@ export default function LandingPage() {
 
   useEffect(() => {
     const handleRedirect = async () => {
+      // プレビュー環境では Firebase Auth API の呼び出し（getRedirectResult等）を避ける
+      if (isPreviewMode) {
+        console.log("login:preview-mode-active (skipping redirect check)");
+        return;
+      }
+
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
@@ -35,7 +41,7 @@ export default function LandingPage() {
       }
     };
     handleRedirect();
-  }, []);
+  }, [isPreviewMode]); // isPreviewMode の確定を待って実行
 
   const handleGoogleLogin = async () => {
     setErrorMessage("");
@@ -53,7 +59,7 @@ export default function LandingPage() {
 
   const handlePreviewBypass = () => {
     setLoading(true);
-    // Directly trigger mock login instead of Firebase Auth API
+    // Firebase Auth API を呼ばず、ダミーセッションを開始
     loginAsMockUser();
     console.log("login:bypass-success (mock session)");
   };
