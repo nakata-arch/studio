@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -14,14 +15,14 @@ export default function LandingPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    // 既にログイン済みの場合は設定画面へ（プレビューバイパス時も含む）
+    // Redirect to settings if already logged in (including anonymous bypass)
     if (user && !isUserLoading) {
       router.replace("/settings");
     }
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    const run = async () => {
+    const handleRedirect = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
@@ -29,12 +30,13 @@ export default function LandingPage() {
         }
       } catch (error: any) {
         console.error("login:redirect-error", error);
+        // Don't show error for configuration issues in preview
         if (error.code !== "auth/operation-not-allowed" && error.code !== "auth/api-key-not-valid") {
            setErrorMessage("ログインに失敗しました。もう一度お試しください。");
         }
       }
     };
-    run();
+    handleRedirect();
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -55,7 +57,9 @@ export default function LandingPage() {
     setErrorMessage("");
     try {
       setLoading(true);
+      // Trigger anonymous login for preview bypass
       await signInAnonymously(auth);
+      console.log("login:bypass-success (anonymous)");
     } catch (error) {
       console.error("login:bypass-error", error);
       setErrorMessage("プレビューアクセスの開始に失敗しました。");

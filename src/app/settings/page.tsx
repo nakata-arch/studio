@@ -29,30 +29,17 @@ export default function SettingsPage() {
   const router = useRouter();
   const auth = useAuth();
   const db = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading, isPreviewMode } = useUser();
   const { toast } = useToast();
   
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'saving' | 'success' | 'failed'>('idle');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
   const [isCountsLoading, setIsCountsLoading] = useState(false);
-  const [isPreviewEnv, setIsPreviewEnv] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const hostname = window.location.hostname;
-      const isStudioPreview = 
-        hostname.includes("cloudworkstations.dev") || 
-        hostname === "studio.firebase.google.com";
-      
-      setIsPreviewEnv(isStudioPreview);
-    }
-  }, []);
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
     setIsCountsLoading(true);
-    console.log("settings:fetch-counts-start");
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
@@ -62,7 +49,6 @@ export default function SettingsPage() {
         report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
         classify: all.filter(e => !e.quadrantCategory).length
       });
-      console.log("settings:fetch-counts-done");
     } catch (e) {
       console.error("settings:fetch-counts-error", e);
     } finally {
@@ -73,7 +59,6 @@ export default function SettingsPage() {
   const processSync = useCallback(async (accessToken: string) => {
     if (!user) return;
     setSyncStatus('saving');
-    console.log("settings:sync-start");
     try {
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
@@ -116,7 +101,6 @@ export default function SettingsPage() {
       toast({ title: "整いました", description: `${items.length}件の予定を同期しました。` });
       fetchCounts();
       setTimeout(() => setSyncStatus('idle'), 3000);
-      console.log("settings:sync-done");
     } catch (err: any) {
       console.error("settings:sync-error", err);
       setSyncStatus('failed');
@@ -126,7 +110,6 @@ export default function SettingsPage() {
   }, [user, db, toast, fetchCounts]);
 
   useEffect(() => {
-    console.log("settings:init", { isUserLoading, hasUser: !!user });
     if (!isUserLoading && user) {
       fetchCounts();
       getRedirectResult(auth).then((result) => {
@@ -145,11 +128,13 @@ export default function SettingsPage() {
 
   const handleSyncTrigger = () => {
     if (!user) return;
-    if (isPreviewEnv) {
+    
+    // Disable sync trigger in preview bypass mode (anonymous auth)
+    if (user.isAnonymous || isPreviewMode) {
       toast({
         variant: "destructive",
         title: "プレビュー環境制限",
-        description: "本番ドメイン（*.hosted.app）でお試しください。",
+        description: "Googleログイン（匿名認証以外）が必要です。本番ドメインでお試しください。",
       });
       return;
     }
@@ -199,18 +184,18 @@ export default function SettingsPage() {
             <AvatarFallback><UserIcon className="h-8 w-8 opacity-20" /></AvatarFallback>
           </Avatar>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName}</h3>
-            <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email}</p>
+            <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || (user.isAnonymous ? "Preview User" : "User")}</h3>
+            <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email || "Temporary Account"}</p>
           </div>
         </div>
 
-        {isPreviewEnv && (
+        {(isPreviewMode || user.isAnonymous) && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="text-xs font-bold text-amber-900">プレビュー環境での制限</p>
+              <p className="text-xs font-bold text-amber-900">プレビューモードで実行中</p>
               <p className="text-[10px] text-amber-700 leading-relaxed">
-                カレンダー同期には本番環境（*.hosted.app）での操作が必要です。
+                カレンダー同期には Google 認証が必要です。本番環境（*.hosted.app）での操作をお勧めします。
               </p>
             </div>
           </div>

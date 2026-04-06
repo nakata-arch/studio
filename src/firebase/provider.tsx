@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
 import { Firestore } from 'firebase/firestore';
-import { Auth, User, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 
 interface FirebaseProviderProps {
@@ -66,6 +67,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   useEffect(() => {
     if (typeof window !== "undefined") {
       const hostname = window.location.hostname;
+      // Identify internal Studio preview domains
       const isStudioPreview =
         hostname.includes("cloudworkstations.dev") ||
         hostname === "studio.firebase.google.com";
@@ -82,16 +84,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
-        // プレビュー環境かつログインしていない場合、自動的に匿名ログインを試みる（バイパス）
-        if (!firebaseUser && isPreviewMode && process.env.NEXT_PUBLIC_ENABLE_PREVIEW_BYPASS !== "false") {
-          console.log("FirebaseProvider: Preview mode detected, auto-signing in anonymously...");
-          signInAnonymously(auth).catch(err => {
-            console.error("FirebaseProvider: Anonymous sign-in failed", err);
-            setUserAuthState({ user: null, isUserLoading: false, userError: err });
-          });
-          return;
-        }
-
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => {
@@ -100,7 +92,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       }
     );
     return () => unsubscribe();
-  }, [auth, isPreviewMode]);
+  }, [auth]);
 
   const contextValue = useMemo((): FirebaseContextState => {
     const servicesAvailable = !!(firebaseApp && firestore && auth);
