@@ -1,44 +1,15 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Functions ---
-
-    /** @description ユーザーがサインインしているか確認 */
-    function isSignedIn() {
-      return request.auth != null;
+    /**
+     * 開発用ルール
+     * 全てのコレクションおよびサブコレクションへの読み書きを無条件で許可します。
+     * 本番環境へのデプロイ前には、必ず認証ベースのルールに戻してください。
+     */
+    match /{document=**} {
+      allow read, write: if true;
     }
 
-    /** @description 認証されたユーザーのUIDが指定されたuserIdと一致するか確認 */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    // --- Collection Rules ---
-
-    match /users/{userId} {
-      // ユーザー自身のプロファイルへのアクセス
-      allow get: if isOwner(userId);
-      allow list: if false; // ユーザー一覧の取得は禁止
-      allow create, update, delete: if isOwner(userId);
-
-      // イベント（予定）サブコレクション
-      match /events/{eventId} {
-        // 所有者であれば、そのコレクション内のドキュメントの読み書きをすべて許可
-        allow read, write: if isOwner(userId);
-      }
-
-      // サマリー（日記・集計）サブコレクション
-      match /summaries/{summaryId} {
-        allow read, write: if isOwner(userId);
-      }
-    }
-
-    // 名言データは誰でも読み取り可能
-    match /quotes/{quoteId} {
-      allow read: if true;
-      allow write: if false;
-    }
   }
 }
