@@ -1,13 +1,13 @@
+
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useUser, useFirestore, DUMMY_USER_ID } from "@/firebase";
 import {
   collection,
   query,
   orderBy,
   getDocs,
-  where,
   limit,
   doc,
   updateDoc,
@@ -43,8 +43,6 @@ import {
 import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
-import { errorEmitter } from "@/firebase/error-emitter";
-import { FirestorePermissionError } from "@/firebase/errors";
 import { PREVIEW_EVENTS } from "@/lib/preview-data";
 import { QuotePopup } from "@/components/QuotePopup";
 import Link from "next/link";
@@ -60,29 +58,22 @@ type SwipeCandidate = ReportStatus | null;
 
 const SWIPE_X_THRESHOLD = 110;
 const SWIPE_Y_THRESHOLD = 90;
-const PAGE_SIZE_UNREPORTED = 10;
-const PAGE_SIZE_REPORTED = 15;
+const FETCH_LIMIT = 50; // インデックスエラー回避のため、広めに取得してメモリ内でフィルタする
 
 export default function ReportPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
 
-  // スワイプ用（未報告）
   const [events, setEvents] = useState<AppEvent[]>([]);
+  const [reportedEvents, setReportedEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [memo, setMemo] = useState("");
   const [swipeCandidate, setSwipeCandidate] = useState<SwipeCandidate>(null);
-  const [lastVisibleUnreported, setLastVisibleUnreported] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [hasMoreUnreported, setHasMoreUnreported] = useState(true);
-
-  // 履歴用（報告済み）
-  const [reportedEvents, setReportedEvents] = useState<AppEvent[]>([]);
-  const [loadingReported, setLoadingReported] = useState(false);
-  const [lastVisibleReported, setLastVisibleReported] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [hasMoreReported, setHasMoreReported] = useState(true);
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(true);
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
 
   const x = useMotionValue(0);
@@ -93,132 +84,75 @@ export default function ReportPage() {
   const failedOpacity = useTransform(x, [0, 60, 140], [0, 0.5, 1]);
   const cancelledOpacity = useTransform(y, [-140, -60, 0], [1, 0.5, 0]);
 
-  // 未報告データの取得
-  const fetchUnreported = useCallback(async (isLoadMore = false) => {
-    console.log(`report:fetch-unreported (more: ${isLoadMore})`);
-    if (!user || loadingMore) return;
+  const fetchAllEvents = useCallback(async (isLoadMore = false) => {
+    console.log(`report:fetch-start (more: ${isLoadMore})`);
+    if (!user) return;
 
     if (isLoadMore) setLoadingMore(true);
     else setLoading(true);
 
     if (user.uid === DUMMY_USER_ID) {
-      const unlisted = PREVIEW_EVENTS.filter((e) => !e.reportStatus);
-      const startIdx = isLoadMore ? events.length : 0;
-      const nextBatch = unlisted.slice(startIdx, startIdx + PAGE_SIZE_UNREPORTED);
-      setEvents(prev => isLoadMore ? [...prev, ...nextBatch] : nextBatch);
-      setHasMoreUnreported(startIdx + PAGE_SIZE_UNREPORTED < unlisted.length);
+      const all = PREVIEW_EVENTS;
+      const now = new Date();
+      setEvents(all.filter(e => !e.isReported && new Date(e.startAt) < now));
+      setReportedEvents(all.filter(e => e.isReported));
+      setHasMore(false);
       setLoading(false);
       setLoadingMore(false);
       return;
     }
 
     try {
-      const now = new Date().toISOString();
       const eventsRef = collection(db, "users", user.uid, "events");
-      // インデックスが必要: isReported (Asc), startAt (Desc)
+      // 複合インデックスエラーを避けるため、orderByのみで取得し、メモリ内でフィルタリングする
       let q = query(
         eventsRef,
-        where("isReported", "==", false),
-        where("startAt", "<", now),
         orderBy("startAt", "desc"),
-        limit(PAGE_SIZE_UNREPORTED)
+        limit(FETCH_LIMIT)
       );
 
-      if (isLoadMore && lastVisibleUnreported) {
+      if (isLoadMore && lastVisible) {
         q = query(
           eventsRef,
-          where("isReported", "==", false),
-          where("startAt", "<", now),
           orderBy("startAt", "desc"),
-          startAfter(lastVisibleUnreported),
-          limit(PAGE_SIZE_UNREPORTED)
+          startAfter(lastVisible),
+          limit(FETCH_LIMIT)
         );
       }
 
       const snap = await getDocs(q);
       const fetched = snap.docs.map((d) => ({ ...d.data(), id: d.id } as AppEvent));
-      setLastVisibleUnreported(snap.docs[snap.docs.length - 1] || null);
-      setHasMoreUnreported(snap.docs.length === PAGE_SIZE_UNREPORTED);
-      setEvents((prev) => isLoadMore ? [...prev, ...fetched] : fetched);
-      console.log(`report:fetch-unreported-done (${fetched.length} events)`);
+      const now = new Date();
+
+      // メモリ内で未報告（過去のもの）と報告済みに分ける
+      const unreported = fetched.filter(e => !e.isReported && new Date(e.startAt) < now);
+      const reported = fetched.filter(e => e.isReported);
+
+      setEvents(prev => isLoadMore ? [...prev, ...unreported] : unreported);
+      setReportedEvents(prev => isLoadMore ? [...prev, ...reported] : reported);
+      
+      setLastVisible(snap.docs[snap.docs.length - 1] || null);
+      setHasMore(snap.docs.length === FETCH_LIMIT);
+      
+      console.log(`report:fetch-done (total: ${fetched.length}, unreported: ${unreported.length})`);
     } catch (err: any) {
-      console.error("report:unreported-error", err);
-      if (err.code === 'failed-precondition') {
-        toast({
-          variant: "destructive",
-          title: "インデックスが必要です",
-          description: "Firestoreコンソールで複合インデックスを作成してください。",
-        });
-      }
+      console.error("report:fetch-error", err);
+      toast({
+        variant: "destructive",
+        title: "データの取得に失敗しました",
+        description: "通信状態を確認してください。",
+      });
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [user, db, events.length, lastVisibleUnreported, loadingMore, toast]);
-
-  // 報告済みデータの取得
-  const fetchReported = useCallback(async (isLoadMore = false) => {
-    console.log(`report:fetch-reported (more: ${isLoadMore})`);
-    if (!user || loadingReported || (!isLoadMore && reportedEvents.length > 0)) return;
-
-    setLoadingReported(true);
-
-    if (user.uid === DUMMY_USER_ID) {
-      const listed = PREVIEW_EVENTS.filter((e) => !!e.reportStatus);
-      const startIdx = isLoadMore ? reportedEvents.length : 0;
-      const nextBatch = listed.slice(startIdx, startIdx + PAGE_SIZE_REPORTED);
-      setReportedEvents(prev => isLoadMore ? [...prev, ...nextBatch] : nextBatch);
-      setHasMoreReported(startIdx + PAGE_SIZE_REPORTED < listed.length);
-      setLoadingReported(false);
-      return;
-    }
-
-    try {
-      const eventsRef = collection(db, "users", user.uid, "events");
-      // インデックスが必要: isReported (Asc), startAt (Desc)
-      let q = query(
-        eventsRef,
-        where("isReported", "==", true),
-        orderBy("startAt", "desc"),
-        limit(PAGE_SIZE_REPORTED)
-      );
-
-      if (isLoadMore && lastVisibleReported) {
-        q = query(
-          eventsRef,
-          where("isReported", "==", true),
-          orderBy("startAt", "desc"),
-          startAfter(lastVisibleReported),
-          limit(PAGE_SIZE_REPORTED)
-        );
-      }
-
-      const snap = await getDocs(q);
-      const fetched = snap.docs.map((d) => ({ ...d.data(), id: d.id } as AppEvent));
-      setLastVisibleReported(snap.docs[snap.docs.length - 1] || null);
-      setHasMoreReported(snap.docs.length === PAGE_SIZE_REPORTED);
-      setReportedEvents((prev) => isLoadMore ? [...prev, ...fetched] : fetched);
-      console.log(`report:fetch-reported-done (${fetched.length} events)`);
-    } catch (err: any) {
-      console.error("report:reported-error", err);
-    } finally {
-      setLoadingReported(false);
-    }
-  }, [user, db, reportedEvents.length, lastVisibleReported, loadingReported]);
+  }, [user, db, lastVisible, toast]);
 
   useEffect(() => {
     if (!isUserLoading && user) {
-      fetchUnreported();
-      fetchReported();
+      fetchAllEvents();
     }
   }, [user, isUserLoading]);
-
-  // 完了後の自動読み込み
-  useEffect(() => {
-    if (events.length === 0 && !loading && !isUserLoading && user && reportedEvents.length === 0) {
-      fetchReported();
-    }
-  }, [events.length, loading, isUserLoading, user, reportedEvents.length, fetchReported]);
 
   const handleReport = async (status: ReportStatus, eventToUpdate: AppEvent, customMemo?: string) => {
     if (!user || isSaving) return;
@@ -253,7 +187,6 @@ export default function ReportPage() {
     });
 
     if (user.uid === DUMMY_USER_ID) {
-      // プレビューデータの更新
       const idx = PREVIEW_EVENTS.findIndex(e => e.id === updatedEvent.id);
       if (idx !== -1) PREVIEW_EVENTS[idx] = updatedEvent;
       setIsSaving(false);
@@ -351,11 +284,10 @@ export default function ReportPage() {
             <Loader2 className="animate-spin opacity-20 h-8 w-8 text-primary" />
           </div>
         ) : currentEvent ? (
-          // スワイプモード
           <div className="w-full max-w-sm flex flex-col items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-[0.3em]">
-                残り: {events.length}件{hasMoreUnreported ? "+" : ""}
+                残り: {events.length}件
               </div>
             </div>
 
@@ -384,7 +316,6 @@ export default function ReportPage() {
                   whileDrag={{ scale: 1.02 }}
                   className="relative touch-none"
                 >
-                  {/* スワイプ時のラベル */}
                   <motion.div style={{ opacity: doneOpacity }} className="pointer-events-none absolute inset-y-6 left-4 z-20 flex items-center">
                     <div className="rounded-full bg-emerald-500 px-4 py-2 text-white text-xs font-bold shadow-lg">できた</div>
                   </motion.div>
@@ -443,7 +374,6 @@ export default function ReportPage() {
             </AnimatePresence>
           </div>
         ) : (
-          // 完了画面 & 履歴一覧
           <div className="w-full max-w-sm space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="text-center space-y-4 pt-6">
               <div className="w-20 h-20 bg-primary/5 rounded-[2.5rem] flex items-center justify-center mx-auto border border-primary/10 mb-2">
@@ -461,10 +391,10 @@ export default function ReportPage() {
                   <History className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-widest">報告済みの歩み</span>
                 </div>
-                {loadingReported && <Loader2 className="h-3 w-3 animate-spin text-primary/20" />}
+                {loadingMore && <Loader2 className="h-3 w-3 animate-spin text-primary/20" />}
               </div>
 
-              {reportedEvents.length === 0 && !loadingReported ? (
+              {reportedEvents.length === 0 && !loading ? (
                 <div className="text-center py-20 opacity-30 space-y-2">
                    <Clock className="h-10 w-10 mx-auto" />
                    <p className="text-xs font-bold uppercase tracking-widest">履歴はありません</p>
@@ -499,14 +429,14 @@ export default function ReportPage() {
                     </Card>
                   ))}
 
-                  {hasMoreReported && (
+                  {hasMore && (
                     <Button 
                       variant="ghost" 
-                      onClick={() => fetchReported(true)} 
-                      disabled={loadingReported}
+                      onClick={() => fetchAllEvents(true)} 
+                      disabled={loadingMore}
                       className="w-full h-14 rounded-3xl text-[10px] font-bold uppercase tracking-widest text-primary/30 hover:text-primary"
                     >
-                      {loadingReported ? <Loader2 className="h-4 w-4 animate-spin" /> : "過去の記録を読み込む"}
+                      {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : "過去の記録を読み込む"}
                     </Button>
                   )}
                 </div>
@@ -520,7 +450,6 @@ export default function ReportPage() {
         )}
       </main>
 
-      {/* 編集モーダル */}
       <Dialog open={!!editingEvent} onOpenChange={(open) => !open && setEditingEvent(null)}>
         <DialogContent className="max-w-[90vw] sm:max-w-[420px] border-none bg-white rounded-[2.5rem] p-0 overflow-hidden shadow-2xl">
           <DialogHeader className="sr-only">
