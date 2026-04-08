@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -13,8 +12,13 @@ const firebaseConfig = {
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-googleProvider.addScope('https://www.googleapis.com/auth/calendar.events');
+googleProvider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/calendar.events");
+googleProvider.setCustomParameters({
+  prompt: "consent",
+});

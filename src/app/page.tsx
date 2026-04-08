@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRedirectResult, GoogleAuthProvider, signInWithRedirect } from "firebase/auth";
-import { auth } from "@/firebase";
+import { getRedirectResult, signInWithRedirect } from "firebase/auth";
+import { auth, googleProvider } from "@/firebase";
 import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, LogIn, ArrowRight } from "lucide-react";
@@ -22,8 +21,6 @@ export default function LandingPage() {
 
   useEffect(() => {
     const handleRedirect = async () => {
-      // Firebase Studio プレビュー環境では getRedirectResult を呼び出さない
-      // APIキーエラーやドメイン制限によるエラーを防ぐため
       if (isPreviewMode) {
         console.log("login:preview-mode-active (skipping redirect check)");
         return;
@@ -33,25 +30,30 @@ export default function LandingPage() {
         const result = await getRedirectResult(auth);
         if (result?.user) {
           console.log("login:redirect-success", result.user.uid);
+          router.replace("/settings");
+          return;
         }
       } catch (error: any) {
         console.error("login:redirect-error", error);
-        // SDKエラーが頻発するため、プレビュー環境以外でも特定の通知は抑制
-        if (error.code !== "auth/operation-not-allowed" && error.code !== "auth/api-key-not-valid") {
-           setErrorMessage("ログインに失敗しました。もう一度お試しください。");
+        if (
+          error.code !== "auth/operation-not-allowed" &&
+          error.code !== "auth/api-key-not-valid"
+        ) {
+          setErrorMessage("ログインに失敗しました。もう一度お試しください。");
         }
+      } finally {
+        setLoading(false);
       }
     };
+
     handleRedirect();
-  }, [isPreviewMode]);
+  }, [isPreviewMode, router]);
 
   const handleGoogleLogin = async () => {
     setErrorMessage("");
     try {
       setLoading(true);
-      const provider = new GoogleAuthProvider();
-      provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
-      await signInWithRedirect(auth, provider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (error) {
       console.error("login:redirect-start-error", error);
       setErrorMessage("Googleログインの開始に失敗しました。");
@@ -61,7 +63,6 @@ export default function LandingPage() {
 
   const handlePreviewBypass = () => {
     setLoading(true);
-    // SDK メソッドを一切呼ばず、内部ステートのみ更新する
     loginAsMockUser();
     console.log("login:bypass-success (mock session started)");
   };
@@ -103,7 +104,11 @@ export default function LandingPage() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-3 rounded-2xl bg-slate-900 px-6 py-5 text-lg font-bold text-white transition-all hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
+              {loading ? (
+                <Loader2 className="animate-spin h-5 w-5" />
+              ) : (
+                <ArrowRight className="h-5 w-5" />
+              )}
               プレビューモードで開始
             </button>
           ) : (
@@ -113,14 +118,19 @@ export default function LandingPage() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-3 rounded-2xl bg-blue-500 px-6 py-5 text-lg font-bold text-white transition-all hover:bg-blue-600 active:scale-[0.98] disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+              {loading ? (
+                <Loader2 className="animate-spin h-5 w-5" />
+              ) : (
+                <LogIn className="h-5 w-5" />
+              )}
               Googleでログイン
             </button>
           )}
 
           {isPreviewMode && (
             <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 text-[11px] leading-relaxed text-amber-700/80 font-medium">
-              <span className="font-bold">Studio プレビュー制限:</span> 現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメインをご利用ください。
+              <span className="font-bold">Studio プレビュー制限:</span>{" "}
+              現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメインをご利用ください。
             </div>
           )}
 
@@ -132,7 +142,9 @@ export default function LandingPage() {
         </div>
 
         <div className="pt-8 opacity-20">
-          <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-slate-400">Time Management Coach</p>
+          <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-slate-400">
+            Time Management Coach
+          </p>
         </div>
       </div>
     </main>

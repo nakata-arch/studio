@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useAuth, useUser, useFirestore } from "@/firebase";
-import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
-import { doc, setDoc, collection, getDocs, getDoc } from "firebase/firestore";
+import { useAuth, useUser, useFirestore, googleProvider } from "@/firebase";
+import { useRouter } from "next/navigation";
+import { signInWithRedirect, getRedirectResult, GoogleAuthProvider } from "firebase/auth";
+import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppEvent } from "@/lib/types";
@@ -16,128 +17,36 @@ import {
   ListTodo,
   Loader2,
   LogIn,
-  CheckCircle2,
-  AlertTriangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { endOfToday, isAfter, parseISO, subYears } from "date-fns";
-
-type SyncStatus = "idle" | "syncing" | "saving" | "success" | "failed";
-
-type SyncSummary = {
-  fetched: number;
-  created: number;
-  updated: number;
-  cancelled: number;
-  skipped: number;
-};
-
-type GoogleCalendarEvent = {
-  id: string;
-  status?: string;
-  summary?: string;
-  description?: string;
-  start?: {
-    dateTime?: string;
-    date?: string;
-  };
-  end?: {
-    dateTime?: string;
-    date?: string;
-  };
-};
-
-const EMPTY_SUMMARY: SyncSummary = {
-  fetched: 0,
-  created: 0,
-  updated: 0,
-  cancelled: 0,
-  skipped: 0,
-};
-
-function isPastOrToday(dateString?: string) {
-  if (!dateString) return false;
-
-  try {
-    return !isAfter(parseISO(dateString), endOfToday());
-  } catch {
-    return false;
-  }
-}
-
-async function fetchAllGoogleCalendarEvents(accessToken: string): Promise<GoogleCalendarEvent[]> {
-  const allItems: GoogleCalendarEvent[] = [];
-  let nextPageToken: string | undefined = undefined;
-
-  // 取得範囲は「過去5年〜今日まで」
-  const timeMin = subYears(new Date(), 5).toISOString();
-  const timeMax = endOfToday().toISOString();
-
-  do {
-    const params = new URLSearchParams({
-      timeMin,
-      timeMax,
-      maxResults: "250",
-      singleEvents: "true",
-      orderBy: "startTime",
-    });
-
-    if (nextPageToken) {
-      params.set("pageToken", nextPageToken);
-    }
-
-    const response = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
-
-    const body = await response.json();
-
-    if (!response.ok) {
-      throw new Error(body?.error?.message || response.statusText || "Google Calendar API error");
-    }
-
-    const items = Array.isArray(body.items) ? body.items : [];
-    allItems.push(...items);
-    nextPageToken = body.nextPageToken;
-  } while (nextPageToken);
-
-  return allItems;
-}
+import { isBefore, parseISO } from "date-fns";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const auth = useAuth();
   const db = useFirestore();
   const { user, isUserLoading, isPreviewMode } = useUser();
   const { toast } = useToast();
 
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "saving" | "success" | "failed">("idle");
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
   const [isCountsLoading, setIsCountsLoading] = useState(false);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary>(EMPTY_SUMMARY);
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
-
     setIsCountsLoading(true);
-
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
-
+      const now = new Date();
       const all = snap.docs
         .map((d) => d.data() as AppEvent)
-        .filter((e) => !e.deleted)
-        .filter((e) => isPastOrToday(e.startAt));
+        .filter((e) => !e.deleted);
 
       setCounts({
-        report: all.filter((e) => !e.reportStatus).length,
+        report: all.filter((e) => !e.reportStatus && isBefore(parseISO(e.startAt), now)).length,
         classify: all.filter((e) => !e.quadrantCategory).length,
       });
     } catch (e) {
@@ -150,41 +59,22 @@ export default function SettingsPage() {
   const processSync = useCallback(
     async (accessToken: string) => {
       if (!user) return;
-
       setSyncStatus("saving");
-      setSyncSummary(EMPTY_SUMMARY);
-
       try {
-        const items = await fetchAllGoogleCalendarEvents(accessToken);
+        const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const response = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=250&singleEvents=true&orderBy=startTime`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error?.message || response.statusText);
+
+        const items = body.items || [];
         const now = Date.now();
 
-        const summary: SyncSummary = {
-          fetched: items.length,
-          created: 0,
-          updated: 0,
-          cancelled: 0,
-          skipped: 0,
-        };
-
         for (const ev of items) {
-          if (!ev?.id) {
-            summary.skipped += 1;
-            continue;
-          }
-
-          const startAt = ev.start?.dateTime || ev.start?.date;
-          const endAt = ev.end?.dateTime || ev.end?.date;
-
-          if (!startAt) {
-            summary.skipped += 1;
-            continue;
-          }
-
           const eventRef = doc(db, "users", user.uid, "events", ev.id);
-          const existingSnap = await getDoc(eventRef);
-          const exists = existingSnap.exists();
-
-          const isCancelled = ev.status === "cancelled";
 
           await setDoc(
             eventRef,
@@ -194,52 +84,28 @@ export default function SettingsPage() {
               googleEventId: ev.id,
               title: ev.summary || "(タイトルなし)",
               description: ev.description || "",
-              startAt,
-              endAt: endAt || startAt,
+              startAt: ev.start?.dateTime || ev.start?.date,
+              endAt: ev.end?.dateTime || ev.end?.date,
               calendarName: "Google Calendar",
               syncStatus: "synced",
-              deleted: isCancelled,
+              deleted: false,
               source: "google_calendar",
-              googleStatus: ev.status || "confirmed",
               lastSyncedAt: now,
               updatedAt: now,
               isReported: false,
             },
             { merge: true }
           );
-
-          if (isCancelled) {
-            summary.cancelled += 1;
-          }
-
-          if (exists) {
-            summary.updated += 1;
-          } else {
-            summary.created += 1;
-          }
         }
 
-        setSyncSummary(summary);
         setSyncStatus("success");
-
+        toast({ title: "同期完了", description: `${items.length}件の予定を同期しました。` });
         await fetchCounts();
-
-        toast({
-          title: "同期完了",
-          description:
-            `取得 ${summary.fetched}件 / 新規 ${summary.created}件 / 更新 ${summary.updated}件 / ` +
-            `削除反映 ${summary.cancelled}件 / スキップ ${summary.skipped}件`,
-        });
-
-        setTimeout(() => setSyncStatus("idle"), 4000);
+        setTimeout(() => setSyncStatus("idle"), 3000);
       } catch (err: any) {
         console.error("settings:sync-error", err);
         setSyncStatus("failed");
-        toast({
-          variant: "destructive",
-          title: "同期失敗",
-          description: err?.message || "カレンダー同期に失敗しました。",
-        });
+        toast({ variant: "destructive", title: "同期失敗", description: err.message });
       }
     },
     [user, db, toast, fetchCounts]
@@ -268,7 +134,6 @@ export default function SettingsPage() {
 
   const handleSyncTrigger = () => {
     if (!user) return;
-
     if (isPreviewMode) {
       toast({
         variant: "destructive",
@@ -279,14 +144,25 @@ export default function SettingsPage() {
     }
 
     setSyncStatus("syncing");
-
-    const provider = new GoogleAuthProvider();
-    provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
-
-    signInWithRedirect(auth, provider).catch((error) => {
+    signInWithRedirect(auth, googleProvider).catch((error) => {
       console.error("settings:redirect-trigger-error", error);
       setSyncStatus("failed");
     });
+  };
+
+  const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem("isMockLoggedIn");
+      await auth.signOut();
+      router.replace("/");
+    } catch (error) {
+      console.error("logout:error", error);
+      toast({
+        variant: "destructive",
+        title: "ログアウト失敗",
+        description: "もう一度お試しください。",
+      });
+    }
   };
 
   if (isUserLoading) {
@@ -366,45 +242,6 @@ export default function SettingsPage() {
           </Card>
         </div>
 
-        {(syncStatus === "success" || syncStatus === "failed") && (
-          <Card
-            className={`border-none shadow-sm rounded-3xl ${
-              syncStatus === "success" ? "bg-emerald-50" : "bg-rose-50"
-            }`}
-          >
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                {syncStatus === "success" ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 text-rose-600" />
-                )}
-                <p
-                  className={`text-sm font-bold ${
-                    syncStatus === "success" ? "text-emerald-700" : "text-rose-700"
-                  }`}
-                >
-                  {syncStatus === "success" ? "同期結果" : "同期エラー"}
-                </p>
-              </div>
-
-              {syncStatus === "success" ? (
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>取得件数: <span className="font-bold">{syncSummary.fetched}</span></div>
-                  <div>新規作成: <span className="font-bold">{syncSummary.created}</span></div>
-                  <div>更新件数: <span className="font-bold">{syncSummary.updated}</span></div>
-                  <div>削除反映: <span className="font-bold">{syncSummary.cancelled}</span></div>
-                  <div>スキップ: <span className="font-bold">{syncSummary.skipped}</span></div>
-                </div>
-              ) : (
-                <p className="text-xs text-rose-700">
-                  ブラウザのコンソールに出ている <code>settings:sync-error</code> をご確認ください。
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         <div className="space-y-3">
           <Button
             type="button"
@@ -420,18 +257,12 @@ export default function SettingsPage() {
                   : "h-4 w-4 opacity-40"
               }
             />
-            {syncStatus === "syncing" || syncStatus === "saving"
-              ? "カレンダーを同期しています..."
-              : "カレンダーを同期する"}
+            カレンダーを同期する
           </Button>
 
           <Button
             type="button"
-            onClick={() => {
-              sessionStorage.removeItem("isMockLoggedIn");
-              auth.signOut();
-              window.location.reload();
-            }}
+            onClick={handleLogout}
             variant="ghost"
             className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5"
           >
