@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth, useUser, useFirestore } from "@/firebase";
 import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
-import { doc, setDoc, collection, getDocs, getDoc } from "firebase/firestore";
+import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppEvent } from "@/lib/types";
@@ -16,50 +16,19 @@ import {
   ListTodo,
   Loader2,
   LogIn,
-  CheckCircle2,
-  AlertTriangle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { endOfToday, isAfter, parseISO, subYears } from "date-fns";
 
-type SyncStatus = "idle" | "syncing" | "saving" | "success" | "failed";
-
 type SyncSummary = {
   fetched: number;
-  created: number;
-  updated: number;
   cancelled: number;
-  skipped: number;
-};
-
-type GoogleCalendarEvent = {
-  id: string;
-  status?: string;
-  summary?: string;
-  description?: string;
-  start?: {
-    dateTime?: string;
-    date?: string;
-  };
-  end?: {
-    dateTime?: string;
-    date?: string;
-  };
-};
-
-const EMPTY_SUMMARY: SyncSummary = {
-  fetched: 0,
-  created: 0,
-  updated: 0,
-  cancelled: 0,
-  skipped: 0,
 };
 
 function isPastOrToday(dateString?: string) {
   if (!dateString) return false;
-
   try {
     return !isAfter(parseISO(dateString), endOfToday());
   } catch {
@@ -67,11 +36,10 @@ function isPastOrToday(dateString?: string) {
   }
 }
 
-async function fetchAllGoogleCalendarEvents(accessToken: string): Promise<GoogleCalendarEvent[]> {
-  const allItems: GoogleCalendarEvent[] = [];
+async function fetchAllGoogleCalendarEvents(accessToken: string) {
+  const allItems: any[] = [];
   let nextPageToken: string | undefined = undefined;
 
-  // 取得範囲は「過去5年〜今日まで」
   const timeMin = subYears(new Date(), 5).toISOString();
   const timeMax = endOfToday().toISOString();
 
@@ -90,21 +58,15 @@ async function fetchAllGoogleCalendarEvents(accessToken: string): Promise<Google
 
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
     const body = await response.json();
-
     if (!response.ok) {
-      throw new Error(body?.error?.message || response.statusText || "Google Calendar API error");
+      throw new Error(body.error?.message || response.statusText);
     }
 
-    const items = Array.isArray(body.items) ? body.items : [];
-    allItems.push(...items);
+    allItems.push(...(body.items || []));
     nextPageToken = body.nextPageToken;
   } while (nextPageToken);
 
@@ -117,16 +79,14 @@ export default function SettingsPage() {
   const { user, isUserLoading, isPreviewMode } = useUser();
   const { toast } = useToast();
 
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "saving" | "success" | "failed">("idle");
   const [counts, setCounts] = useState({ report: 0, classify: 0 });
   const [isCountsLoading, setIsCountsLoading] = useState(false);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary>(EMPTY_SUMMARY);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
 
   const fetchCounts = useCallback(async () => {
     if (!user) return;
-
     setIsCountsLoading(true);
-
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
@@ -147,103 +107,76 @@ export default function SettingsPage() {
     }
   }, [user, db]);
 
-  const processSync = useCallback(
-    async (accessToken: string) => {
-      if (!user) return;
+  const processSync = useCallback(async (accessToken: string) => {
+    if (!user) return;
+    setSyncStatus("saving");
+    setSyncSummary(null);
 
-      setSyncStatus("saving");
-      setSyncSummary(EMPTY_SUMMARY);
+    try {
+      const items = await fetchAllGoogleCalendarEvents(accessToken);
+      const now = Date.now();
 
-      try {
-        const items = await fetchAllGoogleCalendarEvents(accessToken);
-        const now = Date.now();
+      let cancelled = 0;
 
-        const summary: SyncSummary = {
-          fetched: items.length,
-          created: 0,
-          updated: 0,
-          cancelled: 0,
-          skipped: 0,
-        };
+      for (const ev of items) {
+        if (!ev?.id) continue;
 
-        for (const ev of items) {
-          if (!ev?.id) {
-            summary.skipped += 1;
-            continue;
-          }
+        const startAt = ev.start?.dateTime || ev.start?.date;
+        const endAt = ev.end?.dateTime || ev.end?.date;
 
-          const startAt = ev.start?.dateTime || ev.start?.date;
-          const endAt = ev.end?.dateTime || ev.end?.date;
+        if (!startAt) continue;
 
-          if (!startAt) {
-            summary.skipped += 1;
-            continue;
-          }
+        const isCancelled = ev.status === "cancelled";
+        if (isCancelled) cancelled += 1;
 
-          const eventRef = doc(db, "users", user.uid, "events", ev.id);
-          const existingSnap = await getDoc(eventRef);
-          const exists = existingSnap.exists();
+        const eventRef = doc(db, "users", user.uid, "events", ev.id);
 
-          const isCancelled = ev.status === "cancelled";
-
-          await setDoc(
-            eventRef,
-            {
-              id: ev.id,
-              userId: user.uid,
-              googleEventId: ev.id,
-              title: ev.summary || "(タイトルなし)",
-              description: ev.description || "",
-              startAt,
-              endAt: endAt || startAt,
-              calendarName: "Google Calendar",
-              syncStatus: "synced",
-              deleted: isCancelled,
-              source: "google_calendar",
-              googleStatus: ev.status || "confirmed",
-              lastSyncedAt: now,
-              updatedAt: now,
-              isReported: false,
-            },
-            { merge: true }
-          );
-
-          if (isCancelled) {
-            summary.cancelled += 1;
-          }
-
-          if (exists) {
-            summary.updated += 1;
-          } else {
-            summary.created += 1;
-          }
-        }
-
-        setSyncSummary(summary);
-        setSyncStatus("success");
-
-        await fetchCounts();
-
-        toast({
-          title: "同期完了",
-          description:
-            `取得 ${summary.fetched}件 / 新規 ${summary.created}件 / 更新 ${summary.updated}件 / ` +
-            `削除反映 ${summary.cancelled}件 / スキップ ${summary.skipped}件`,
-        });
-
-        setTimeout(() => setSyncStatus("idle"), 4000);
-      } catch (err: any) {
-        console.error("settings:sync-error", err);
-        setSyncStatus("failed");
-        toast({
-          variant: "destructive",
-          title: "同期失敗",
-          description: err?.message || "カレンダー同期に失敗しました。",
-        });
+        await setDoc(
+          eventRef,
+          {
+            id: ev.id,
+            userId: user.uid,
+            googleEventId: ev.id,
+            title: ev.summary || "(タイトルなし)",
+            description: ev.description || "",
+            startAt,
+            endAt: endAt || startAt,
+            calendarName: "Google Calendar",
+            syncStatus: "synced",
+            deleted: isCancelled,
+            source: "google_calendar",
+            lastSyncedAt: now,
+            updatedAt: now,
+            isReported: false,
+          },
+          { merge: true }
+        );
       }
-    },
-    [user, db, toast, fetchCounts]
-  );
+
+      setSyncSummary({
+        fetched: items.length,
+        cancelled,
+      });
+
+      setSyncStatus("success");
+      await fetchCounts();
+
+      toast({
+        title: "同期完了",
+        description: `${items.length}件の予定を同期しました。キャンセル反映 ${cancelled}件`,
+      });
+
+      setTimeout(() => setSyncStatus("idle"), 3000);
+    } catch (err: any) {
+      console.error("settings:sync-error", err);
+      setSyncStatus("failed");
+      toast({
+        variant: "destructive",
+        title: "同期失敗",
+        description: err.message || "カレンダー同期に失敗しました。",
+      });
+    }
+  }, [user, db, toast, fetchCounts]);
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -268,7 +201,6 @@ export default function SettingsPage() {
 
   const handleSyncTrigger = () => {
     if (!user) return;
-
     if (isPreviewMode) {
       toast({
         variant: "destructive",
@@ -279,7 +211,6 @@ export default function SettingsPage() {
     }
 
     setSyncStatus("syncing");
-
     const provider = new GoogleAuthProvider();
     provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
 
@@ -324,9 +255,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16 ring-4 ring-white shadow-sm shrink-0">
             <AvatarImage src={user.photoURL || ""} />
-            <AvatarFallback>
-              <UserIcon className="h-8 w-8 opacity-20" />
-            </AvatarFallback>
+            <AvatarFallback><UserIcon className="h-8 w-8 opacity-20" /></AvatarFallback>
           </Avatar>
           <div className="space-y-0.5 min-w-0">
             <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">
@@ -366,41 +295,11 @@ export default function SettingsPage() {
           </Card>
         </div>
 
-        {(syncStatus === "success" || syncStatus === "failed") && (
-          <Card
-            className={`border-none shadow-sm rounded-3xl ${
-              syncStatus === "success" ? "bg-emerald-50" : "bg-rose-50"
-            }`}
-          >
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                {syncStatus === "success" ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 text-rose-600" />
-                )}
-                <p
-                  className={`text-sm font-bold ${
-                    syncStatus === "success" ? "text-emerald-700" : "text-rose-700"
-                  }`}
-                >
-                  {syncStatus === "success" ? "同期結果" : "同期エラー"}
-                </p>
-              </div>
-
-              {syncStatus === "success" ? (
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>取得件数: <span className="font-bold">{syncSummary.fetched}</span></div>
-                  <div>新規作成: <span className="font-bold">{syncSummary.created}</span></div>
-                  <div>更新件数: <span className="font-bold">{syncSummary.updated}</span></div>
-                  <div>削除反映: <span className="font-bold">{syncSummary.cancelled}</span></div>
-                  <div>スキップ: <span className="font-bold">{syncSummary.skipped}</span></div>
-                </div>
-              ) : (
-                <p className="text-xs text-rose-700">
-                  ブラウザのコンソールに出ている <code>settings:sync-error</code> をご確認ください。
-                </p>
-              )}
+        {syncSummary && (
+          <Card className="border-none bg-emerald-50 shadow-sm rounded-3xl">
+            <CardContent className="p-5 text-xs text-emerald-800 space-y-1">
+              <div>取得件数: <span className="font-bold">{syncSummary.fetched}</span></div>
+              <div>キャンセル反映: <span className="font-bold">{syncSummary.cancelled}</span></div>
             </CardContent>
           </Card>
         )}
@@ -413,16 +312,8 @@ export default function SettingsPage() {
             variant="outline"
             className="w-full h-14 rounded-2xl gap-3 font-medium bg-white/50 border-primary/5 hover:bg-white transition-all shadow-sm"
           >
-            <RefreshCw
-              className={
-                syncStatus === "syncing" || syncStatus === "saving"
-                  ? "animate-spin h-4 w-4"
-                  : "h-4 w-4 opacity-40"
-              }
-            />
-            {syncStatus === "syncing" || syncStatus === "saving"
-              ? "カレンダーを同期しています..."
-              : "カレンダーを同期する"}
+            <RefreshCw className={(syncStatus === "syncing" || syncStatus === "saving") ? "animate-spin h-4 w-4" : "h-4 w-4 opacity-40"} />
+            カレンダーを同期する
           </Button>
 
           <Button
