@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -96,6 +95,7 @@ export default function ReportPage() {
 
   // 未報告データの取得
   const fetchUnreported = useCallback(async (isLoadMore = false) => {
+    console.log(`report:fetch-unreported (more: ${isLoadMore})`);
     if (!user || loadingMore) return;
 
     if (isLoadMore) setLoadingMore(true);
@@ -115,10 +115,11 @@ export default function ReportPage() {
     try {
       const now = new Date().toISOString();
       const eventsRef = collection(db, "users", user.uid, "events");
+      // インデックスが必要: isReported (Asc), startAt (Desc)
       let q = query(
         eventsRef,
-        where("startAt", "<", now),
         where("isReported", "==", false),
+        where("startAt", "<", now),
         orderBy("startAt", "desc"),
         limit(PAGE_SIZE_UNREPORTED)
       );
@@ -126,8 +127,8 @@ export default function ReportPage() {
       if (isLoadMore && lastVisibleUnreported) {
         q = query(
           eventsRef,
-          where("startAt", "<", now),
           where("isReported", "==", false),
+          where("startAt", "<", now),
           orderBy("startAt", "desc"),
           startAfter(lastVisibleUnreported),
           limit(PAGE_SIZE_UNREPORTED)
@@ -139,17 +140,25 @@ export default function ReportPage() {
       setLastVisibleUnreported(snap.docs[snap.docs.length - 1] || null);
       setHasMoreUnreported(snap.docs.length === PAGE_SIZE_UNREPORTED);
       setEvents((prev) => isLoadMore ? [...prev, ...fetched] : fetched);
+      console.log(`report:fetch-unreported-done (${fetched.length} events)`);
     } catch (err: any) {
       console.error("report:unreported-error", err);
-      errorEmitter.emit("permission-error", new FirestorePermissionError({ path: "events", operation: "list" }));
+      if (err.code === 'failed-precondition') {
+        toast({
+          variant: "destructive",
+          title: "インデックスが必要です",
+          description: "Firestoreコンソールで複合インデックスを作成してください。",
+        });
+      }
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [user, db, events.length, lastVisibleUnreported, loadingMore]);
+  }, [user, db, events.length, lastVisibleUnreported, loadingMore, toast]);
 
   // 報告済みデータの取得
   const fetchReported = useCallback(async (isLoadMore = false) => {
+    console.log(`report:fetch-reported (more: ${isLoadMore})`);
     if (!user || loadingReported || (!isLoadMore && reportedEvents.length > 0)) return;
 
     setLoadingReported(true);
@@ -166,6 +175,7 @@ export default function ReportPage() {
 
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
+      // インデックスが必要: isReported (Asc), startAt (Desc)
       let q = query(
         eventsRef,
         where("isReported", "==", true),
@@ -188,6 +198,7 @@ export default function ReportPage() {
       setLastVisibleReported(snap.docs[snap.docs.length - 1] || null);
       setHasMoreReported(snap.docs.length === PAGE_SIZE_REPORTED);
       setReportedEvents((prev) => isLoadMore ? [...prev, ...fetched] : fetched);
+      console.log(`report:fetch-reported-done (${fetched.length} events)`);
     } catch (err: any) {
       console.error("report:reported-error", err);
     } finally {
@@ -207,7 +218,7 @@ export default function ReportPage() {
     if (events.length === 0 && !loading && !isUserLoading && user && reportedEvents.length === 0) {
       fetchReported();
     }
-  }, [events.length, loading, isUserLoading, user]);
+  }, [events.length, loading, isUserLoading, user, reportedEvents.length, fetchReported]);
 
   const handleReport = async (status: ReportStatus, eventToUpdate: AppEvent, customMemo?: string) => {
     if (!user || isSaving) return;
