@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRedirectResult, signInWithRedirect } from "firebase/auth";
-import { auth, googleProvider } from "@/firebase";
+import { getRedirectResult, GoogleAuthProvider, signInWithRedirect } from "firebase/auth";
+import { auth } from "@/firebase";
 import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, LogIn, ArrowRight } from "lucide-react";
@@ -28,6 +28,7 @@ export default function LandingPage() {
 
       try {
         const result = await getRedirectResult(auth);
+
         if (result?.user) {
           console.log("login:redirect-success", result.user.uid);
           router.replace("/settings");
@@ -39,7 +40,9 @@ export default function LandingPage() {
           error.code !== "auth/operation-not-allowed" &&
           error.code !== "auth/api-key-not-valid"
         ) {
-          setErrorMessage("ログインに失敗しました。もう一度お試しください。");
+          setErrorMessage(
+            `ログインに失敗しました: ${error?.code || "unknown"} ${error?.message || ""}`
+          );
         }
       } finally {
         setLoading(false);
@@ -53,10 +56,15 @@ export default function LandingPage() {
     setErrorMessage("");
     try {
       setLoading(true);
-      await signInWithRedirect(auth, googleProvider);
-    } catch (error) {
+      const provider = new GoogleAuthProvider();
+      provider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+      provider.setCustomParameters({ prompt: "consent" });
+      await signInWithRedirect(auth, provider);
+    } catch (error: any) {
       console.error("login:redirect-start-error", error);
-      setErrorMessage("Googleログインの開始に失敗しました。");
+      setErrorMessage(
+        `Googleログインの開始に失敗しました: ${error?.code || "unknown"} ${error?.message || ""}`
+      );
       setLoading(false);
     }
   };
@@ -104,11 +112,7 @@ export default function LandingPage() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-3 rounded-2xl bg-slate-900 px-6 py-5 text-lg font-bold text-white transition-all hover:bg-slate-800 active:scale-[0.98] disabled:opacity-50"
             >
-              {loading ? (
-                <Loader2 className="animate-spin h-5 w-5" />
-              ) : (
-                <ArrowRight className="h-5 w-5" />
-              )}
+              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
               プレビューモードで開始
             </button>
           ) : (
@@ -118,24 +122,13 @@ export default function LandingPage() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-3 rounded-2xl bg-blue-500 px-6 py-5 text-lg font-bold text-white transition-all hover:bg-blue-600 active:scale-[0.98] disabled:opacity-50"
             >
-              {loading ? (
-                <Loader2 className="animate-spin h-5 w-5" />
-              ) : (
-                <LogIn className="h-5 w-5" />
-              )}
+              {loading ? <Loader2 className="animate-spin h-5 w-5" /> : <LogIn className="h-5 w-5" />}
               Googleでログイン
             </button>
           )}
 
-          {isPreviewMode && (
-            <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 text-[11px] leading-relaxed text-amber-700/80 font-medium">
-              <span className="font-bold">Studio プレビュー制限:</span>{" "}
-              現在の環境では Google ログインがブロックされるため、ダミーユーザーとして開始します。カレンダー同期を試すには、デプロイ済みのドメインをご利用ください。
-            </div>
-          )}
-
           {errorMessage && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600 whitespace-pre-wrap">
               {errorMessage}
             </div>
           )}
