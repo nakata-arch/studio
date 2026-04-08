@@ -1,11 +1,11 @@
 'use server';
 /**
- * @fileOverview ユーザーの行動データに基づき、AIが自動的に振り返り分析を行うGenkit Flow。
+ * @fileOverview ユーザーの行動データに基づき、AIが客観的な要約を生成するGenkit Flow。
  * 
- * 入力された統計データ（予定数、完了数、4象限の分布）とユーザーのメモを元に、
- * 行動の傾向、優しい振り返り、そして内省を促す問いかけを生成します。
+ * 指示に従い、評価・アドバイス・良し悪しの判定を完全に排除し、
+ * 事実に基づいた要約と内省を促す問いかけのみを生成します。
  *
- * - aiWeeklyReportSummary - AI分析を実行するメイン関数。
+ * - aiWeeklyReportSummary - AI要約を実行するメイン関数。
  */
 
 import { ai } from '@/ai/genkit';
@@ -32,8 +32,8 @@ export type AiWeeklyReportSummaryInput = z.infer<typeof AiWeeklyReportSummaryInp
 
 const AiWeeklyReportSummaryOutputSchema = z.object({
   trendSummary: z.string().describe('行動傾向の客観的な要約。1〜2文。'),
-  reflection: z.string().describe('ユーザーに寄り添う、温かみのある振り返りコメント。'),
-  question: z.string().describe('内省を促す、最後の一言（問いかけ）。'),
+  reflection: z.string().describe('事実に基づいた、寄り添うまとめ。評価やアドバイスは含まない。'),
+  question: z.string().describe('ユーザー自身が気づきを得るための、内省を促す問いかけ。'),
 });
 export type AiWeeklyReportSummaryOutput = z.infer<typeof AiWeeklyReportSummaryOutputSchema>;
 
@@ -45,43 +45,38 @@ const aiWeeklyReportSummaryPrompt = ai.definePrompt({
   name: 'aiWeeklyReportSummaryPrompt',
   input: { schema: AiWeeklyReportSummaryInputSchema },
   output: { schema: AiWeeklyReportSummaryOutputSchema },
-  prompt: `あなたは優しいコーチです。
+  prompt: `あなたは、ユーザーの記録を客観的に整理する冷静で優しい記録係です。
 
-以下はユーザーの{{{targetPeriod}}}（{{{periodType}}}）の記録です。
+以下の記録は、ユーザーの{{{targetPeriod}}}（{{{periodType}}}）の活動データです。
 
 予定数: {{{eventCount}}}
-できた: {{{statusCounts.done}}}
-できなかった: {{{statusCounts.failed}}}
+完了（できた）: {{{statusCounts.done}}}
+未達成（できなかった）: {{{statusCounts.failed}}}
 キャンセル: {{{statusCounts.cancelled}}}
 
-4象限:
-重要かつ緊急: {{{quadrantCounts.urgent_important}}}
-重要だが緊急ではない: {{{quadrantCounts.not_urgent_important}}}
-緊急だが重要ではない: {{{quadrantCounts.urgent_not_important}}}
-重要でも緊急でもない: {{{quadrantCounts.not_urgent_not_important}}}
+4象限の分布:
+- 重要かつ緊急: {{{quadrantCounts.urgent_important}}}
+- 重要だが緊急ではない: {{{quadrantCounts.not_urgent_important}}}
+- 緊急だが重要ではない: {{{quadrantCounts.urgent_not_important}}}
+- 重要でも緊急でもない: {{{quadrantCounts.not_urgent_not_important}}}
 
-日記:
+ユーザーのメモ:
 {{#if userReflection}}
 {{{userReflection}}}
 {{else}}
 なし
 {{/if}}
 
-この情報から以下を生成してください。
-- 行動傾向の要約（1〜2文）
-- やさしい振り返り
-- 最後に問いかけ
+【厳守事項】
+1. 事実の「要約」のみを行ってください。
+2. ユーザーの行動に対する「評価（良い・悪い）」は絶対にしないでください。
+3. 「アドバイス」や「改善提案」は一切行わないでください。
+4. ユーザー自身が自分の時間の使い方に気づけるような「問いかけ」で締めくくってください。
 
-指針：
-- 断定を避け、「〜かもしれません」「〜のようです」といった寄り添う表現を使ってください。
-- できた割合が低い場合は「少し無理な予定が多かったかもしれません」と優しく伝え、高い場合は「一つひとつ丁寧に進められていたようです」と肯定してください。
-- 緊急の予定が多い場合は「少し忙しさに追われていたかもしれません」と共感し、重要（非緊急）が少ない場合は「大切なことに使える時間が、少し少なかったかもしれません」と気づきを促してください。
-
-禁止:
-- 強い否定
-- 指導的すぎる表現
-
-出力はJSON形式で、trendSummary, reflection, question の3つのフィールドに格納してください。`,
+出力（JSON）:
+- trendSummary: データの客観的な要約。
+- reflection: 活動の傾向を事実として伝えるまとめ。
+- question: ユーザーの価値観や気づきを促す問いかけ。`,
 });
 
 const aiWeeklyReportSummaryFlow = ai.defineFlow(

@@ -1,4 +1,3 @@
-
 export type QuadrantCategory = 
   | 'urgent_important' 
   | 'not_urgent_important' 
@@ -38,6 +37,7 @@ export interface AppEvent {
   syncStatus: SyncStatus;
   source: "google_calendar" | "app";
   isReported: boolean;
+  deleted: boolean; // 論理削除フラグ
   lastSyncedAt: number;
   createdAt: number;
   updatedAt: number;

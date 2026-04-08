@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -41,7 +40,9 @@ export default function SettingsPage() {
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
-      const all = snap.docs.map(d => d.data() as AppEvent);
+      const all = snap.docs
+        .map(d => d.data() as AppEvent)
+        .filter(e => !e.deleted);
       
       setCounts({
         report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
@@ -72,6 +73,7 @@ export default function SettingsPage() {
       
       for (const ev of items) {
         const eventRef = doc(db, "users", user.uid, "events", ev.id);
+        // 同期時は deleted: false を明示的にセット（Google側で存在するものは論理削除解除）
         await setDoc(eventRef, {
           id: ev.id,
           userId: user.uid,
@@ -85,6 +87,7 @@ export default function SettingsPage() {
           reportStatus: null,
           syncStatus: 'synced',
           isReported: false,
+          deleted: false,
           source: "google_calendar",
           lastSyncedAt: now,
           updatedAt: now,
@@ -92,7 +95,7 @@ export default function SettingsPage() {
       }
 
       setSyncStatus('success');
-      toast({ title: "整いました", description: `${items.length}件の予定を同期しました。` });
+      toast({ title: "同期完了", description: `${items.length}件の予定を同期しました。` });
       fetchCounts();
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err: any) {
@@ -105,8 +108,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!isUserLoading && user) {
       fetchCounts();
-      
-      // プレビュー環境でのリダイレクトチェックをスキップ (Auth API 呼び出し防止)
       if (isPreviewMode) return;
 
       getRedirectResult(auth).then((result) => {
@@ -128,7 +129,7 @@ export default function SettingsPage() {
     if (isPreviewMode) {
       toast({
         variant: "destructive",
-        title: "プレビュー環境制限",
+        title: "プレビュー制限",
         description: "Google同期にはデプロイ済み環境でのログインが必要です。",
       });
       return;
@@ -178,21 +179,9 @@ export default function SettingsPage() {
           </Avatar>
           <div className="space-y-0.5 min-w-0">
             <h3 className="text-xl font-bold truncate tracking-tight text-foreground/80">{user.displayName || "User"}</h3>
-            <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email || "Temporary Account"}</p>
+            <p className="text-[10px] text-muted-foreground opacity-60 truncate uppercase font-bold tracking-widest">{user.email || "Account"}</p>
           </div>
         </div>
-
-        {isPreviewMode && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-amber-900">プレビューモードで実行中</p>
-              <p className="text-[10px] text-amber-700 leading-relaxed">
-                現在の環境では Google 同期が制限されています。
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
