@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth, useUser, useFirestore, googleProvider } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signInWithRedirect, getRedirectResult, GoogleAuthProvider } from "firebase/auth";
-import { doc, setDoc, collection, getDocs } from "firebase/firestore";
+import { doc, setDoc, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppEvent } from "@/lib/types";
@@ -45,6 +46,8 @@ export default function SettingsPage() {
         .map((d) => d.data() as AppEvent)
         .filter((e) => !e.deleted);
 
+      // 未報告：現在より前の予定で、reportStatusがないもの
+      // 未分類：quadrantCategoryがないもの
       setCounts({
         report: all.filter((e) => !e.reportStatus && isBefore(parseISO(e.startAt), now)).length,
         classify: all.filter((e) => !e.quadrantCategory).length,
@@ -75,7 +78,8 @@ export default function SettingsPage() {
 
         for (const ev of items) {
           const eventRef = doc(db, "users", user.uid, "events", ev.id);
-
+          
+          // 既存のデータを壊さないようにマージ
           await setDoc(
             eventRef,
             {
@@ -92,7 +96,7 @@ export default function SettingsPage() {
               source: "google_calendar",
               lastSyncedAt: now,
               updatedAt: now,
-              isReported: false,
+              isReported: false, // 同期直後は未報告とする
             },
             { merge: true }
           );
@@ -138,7 +142,7 @@ export default function SettingsPage() {
       toast({
         variant: "destructive",
         title: "プレビュー制限",
-        description: "Google同期にはデプロイ済み環境でのログインが必要です。",
+        description: "Google同期には本番環境でのログインが必要です。",
       });
       return;
     }
@@ -157,11 +161,6 @@ export default function SettingsPage() {
       router.replace("/");
     } catch (error) {
       console.error("logout:error", error);
-      toast({
-        variant: "destructive",
-        title: "ログアウト失敗",
-        description: "もう一度お試しください。",
-      });
     }
   };
 
@@ -179,10 +178,8 @@ export default function SettingsPage() {
   if (!user) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-background p-8 text-center gap-6">
-        <div className="space-y-2 opacity-40">
-          <UserIcon className="h-12 w-12 mx-auto" />
-          <p className="text-sm font-bold">ログインが必要です</p>
-        </div>
+        <UserIcon className="h-12 w-12 mx-auto opacity-20" />
+        <p className="text-sm font-bold">ログインが必要です</p>
         <Button asChild className="rounded-full px-8 gap-2 font-bold">
           <Link href="/">
             <LogIn className="h-4 w-4" /> ログイン画面へ
@@ -215,31 +212,35 @@ export default function SettingsPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
-            <CardContent className="p-6 space-y-1">
-              <div className="flex items-center gap-2 text-primary/40">
-                <ClipboardCheck className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">未報告</span>
-              </div>
-              <p className="text-3xl font-bold tracking-tighter text-primary/80">
-                {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.report}
-                <span className="text-xs font-normal ml-1 opacity-40">件</span>
-              </p>
-            </CardContent>
-          </Card>
+          <Link href="/report" className="block">
+            <Card className="border-none bg-primary/5 shadow-sm rounded-3xl hover:bg-primary/10 transition-colors">
+              <CardContent className="p-6 space-y-1">
+                <div className="flex items-center gap-2 text-primary/40">
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">未報告</span>
+                </div>
+                <p className="text-3xl font-bold tracking-tighter text-primary/80">
+                  {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.report}
+                  <span className="text-xs font-normal ml-1 opacity-40">件</span>
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
 
-          <Card className="border-none bg-primary/5 shadow-sm rounded-3xl">
-            <CardContent className="p-6 space-y-1">
-              <div className="flex items-center gap-2 text-primary/40">
-                <ListTodo className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">未分類</span>
-              </div>
-              <p className="text-3xl font-bold tracking-tighter text-primary/80">
-                {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.classify}
-                <span className="text-xs font-normal ml-1 opacity-40">件</span>
-              </p>
-            </CardContent>
-          </Card>
+          <Link href="/classify" className="block">
+            <Card className="border-none bg-primary/5 shadow-sm rounded-3xl hover:bg-primary/10 transition-colors">
+              <CardContent className="p-6 space-y-1">
+                <div className="flex items-center gap-2 text-primary/40">
+                  <ListTodo className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">未分類</span>
+                </div>
+                <p className="text-3xl font-bold tracking-tighter text-primary/80">
+                  {isCountsLoading ? <Loader2 className="h-6 w-6 animate-spin opacity-20" /> : counts.classify}
+                  <span className="text-xs font-normal ml-1 opacity-40">件</span>
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         <div className="space-y-3">
@@ -248,7 +249,7 @@ export default function SettingsPage() {
             onClick={handleSyncTrigger}
             disabled={syncStatus === "syncing" || syncStatus === "saving"}
             variant="outline"
-            className="w-full h-14 rounded-2xl gap-3 font-medium bg-white/50 border-primary/5 hover:bg-white transition-all shadow-sm"
+            className="w-full h-14 rounded-2xl gap-3 font-bold bg-white/50 border-primary/5 hover:bg-white transition-all shadow-sm"
           >
             <RefreshCw
               className={
@@ -257,14 +258,14 @@ export default function SettingsPage() {
                   : "h-4 w-4 opacity-40"
               }
             />
-            カレンダーを同期する
+            {syncStatus === "saving" ? "保存中..." : "カレンダーを同期する"}
           </Button>
 
           <Button
             type="button"
             onClick={handleLogout}
             variant="ghost"
-            className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5"
+            className="w-full h-12 rounded-2xl text-muted-foreground/40 hover:text-destructive hover:bg-destructive/5 font-bold"
           >
             <LogOut className="h-4 w-4 mr-2 opacity-40" />
             ログアウト

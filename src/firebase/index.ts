@@ -2,7 +2,7 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore'
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
@@ -44,6 +44,14 @@ const sdk = initializeFirebase();
 export const firebaseApp = sdk.firebaseApp;
 export const auth = sdk.auth;
 export const firestore = sdk.firestore;
+
+// Export Google Auth Provider with necessary scopes for Google Calendar
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("https://www.googleapis.com/auth/calendar.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/calendar.events");
+googleProvider.setCustomParameters({
+  prompt: "consent",
+});
 
 export * from './provider';
 export * from './firestore/use-collection';
