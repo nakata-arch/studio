@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -13,6 +14,7 @@ import {
   startAfter,
   QueryDocumentSnapshot,
   DocumentData,
+  where,
 } from "firebase/firestore";
 import { AppEvent, ReportStatus } from "@/lib/types";
 import { Navigation } from "@/components/Navigation";
@@ -95,8 +97,8 @@ export default function ReportPage() {
     if (user.uid === DUMMY_USER_ID) {
       const all = PREVIEW_EVENTS;
       const todayEnd = endOfToday();
-      setEvents(all.filter(e => !e.isReported && isBefore(parseISO(e.startAt), todayEnd)));
-      setReportedEvents(all.filter(e => e.isReported));
+      setEvents(all.filter(e => !e.reportStatus && isBefore(parseISO(e.startAt), todayEnd)));
+      setReportedEvents(all.filter(e => !!e.reportStatus));
       setHasMore(false);
       setLoading(false);
       setLoadingMore(false);
@@ -115,9 +117,9 @@ export default function ReportPage() {
       const fetched = snap.docs.map((d) => ({ ...d.data(), id: d.id } as AppEvent));
       const todayEnd = endOfToday();
 
-      // 指示に従い「当日含む過去」かつ「削除されていない」ものを対象に
-      const unreported = fetched.filter(e => !e.deleted && !e.isReported && isBefore(parseISO(e.startAt), todayEnd));
-      const reported = fetched.filter(e => !e.deleted && e.isReported);
+      // reportStatus がない、かつ開始時間が過去のものを「未報告」とする
+      const unreported = fetched.filter(e => !e.deleted && !e.reportStatus && isBefore(parseISO(e.startAt), todayEnd));
+      const reported = fetched.filter(e => !e.deleted && !!e.reportStatus);
 
       setEvents(prev => isLoadMore ? [...prev, ...unreported] : unreported);
       setReportedEvents(prev => isLoadMore ? [...prev, ...reported] : reported);

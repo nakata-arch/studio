@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -22,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { isBefore, parseISO } from "date-fns";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -40,12 +42,13 @@ export default function SettingsPage() {
     try {
       const eventsRef = collection(db, "users", user.uid, "events");
       const snap = await getDocs(eventsRef);
+      const now = new Date();
       const all = snap.docs
         .map(d => d.data() as AppEvent)
         .filter(e => !e.deleted);
       
       setCounts({
-        report: all.filter(e => !e.reportStatus && new Date(e.startAt) < new Date()).length,
+        report: all.filter(e => !e.reportStatus && isBefore(parseISO(e.startAt), now)).length,
         classify: all.filter(e => !e.quadrantCategory).length
       });
     } catch (e) {
@@ -61,7 +64,7 @@ export default function SettingsPage() {
     try {
       const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=100&singleEvents=true&orderBy=startTime`,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&maxResults=250&singleEvents=true&orderBy=startTime`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
 
@@ -73,7 +76,8 @@ export default function SettingsPage() {
       
       for (const ev of items) {
         const eventRef = doc(db, "users", user.uid, "events", ev.id);
-        // 同期時は deleted: false を明示的にセット（Google側で存在するものは論理削除解除）
+        
+        // 既存のデータを壊さないよう、同期時に reportStatus 等は引き継ぐ（または初期化）
         await setDoc(eventRef, {
           id: ev.id,
           userId: user.uid,
@@ -83,20 +87,20 @@ export default function SettingsPage() {
           startAt: ev.start?.dateTime || ev.start?.date,
           endAt: ev.end?.dateTime || ev.end?.date,
           calendarName: "Google Calendar",
-          quadrantCategory: null,
-          reportStatus: null,
           syncStatus: 'synced',
-          isReported: false,
           deleted: false,
           source: "google_calendar",
           lastSyncedAt: now,
           updatedAt: now,
+          // 初期値の設定（既存ドキュメントがある場合は merge により保持される）
+          isReported: false,
         }, { merge: true });
       }
 
       setSyncStatus('success');
       toast({ title: "同期完了", description: `${items.length}件の予定を同期しました。` });
-      fetchCounts();
+      // 同期完了後に即座にカウントを更新
+      await fetchCounts();
       setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (err: any) {
       console.error("settings:sync-error", err);
